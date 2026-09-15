@@ -1,0 +1,744 @@
+<!doctype html>
+<!--
+  PROTOTYPE（一次性原型 · throwaway）
+  问题：「oh-story 监控与评估平台的面板应该长什么样？」
+  三个结构不同的变体，?variant=A|B|C 切换（底部悬浮条 / 方向键 ←→）。
+  mock 数据为种子随机生成，域名词（角色/阶段/模型）取自真实代码库；价格均为虚构。
+  双击本文件即可在浏览器打开。浅色/深色跟随系统，右上角可切换。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>oh-story 监控与评估平台 · UI 原型</title>
+<style>
+:root{
+  color-scheme: light;
+  --page:#f9f9f7; --surface:#fcfcfb; --ink1:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,.10); --ghost:rgba(11,11,11,.045);
+  --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a; --c4:#eda100; --c5:#e87ba4; --c6:#008300; --c7:#4a3aa7; --c8:#e34948;
+  --good-text:#006300; --bad-text:#d03b3b; --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink1:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10); --ghost:rgba(255,255,255,.06);
+    --c1:#3987e5; --c2:#d95926; --c3:#199e70; --c4:#c98500; --c5:#d55181; --c6:#008300; --c7:#9085e9; --c8:#e66767;
+    --good-text:#0ca30c; --bad-text:#e66767; --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#1a1a19; --ink1:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10); --ghost:rgba(255,255,255,.06);
+  --c1:#3987e5; --c2:#d95926; --c3:#199e70; --c4:#c98500; --c5:#d55181; --c6:#008300; --c7:#9085e9; --c8:#e66767;
+  --good-text:#0ca30c; --bad-text:#e66767; --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink1);font:14px/1.55 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+.proto-banner{background:var(--c7);color:#fff;font-size:12px;text-align:center;padding:3px 8px;letter-spacing:.03em}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:20}
+.brand{font-size:16px;font-weight:600}.brand .ver{font-size:11px;color:var(--muted);font-weight:400;margin-left:8px}
+main{max-width:1240px;margin:0 auto;padding:18px 20px 90px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card h3{margin:0 0 4px;font-size:13px;font-weight:600;color:var(--ink1)}
+.card .sub{font-size:12px;color:var(--muted);margin:0 0 10px}
+.filterrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--ink2);padding:5px 12px;cursor:pointer;font:inherit;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--c1);color:#fff}
+select{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink1)}
+.hero{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+.hero .hv{font-size:52px;font-weight:650;line-height:1.05}
+.hero .hl{font-size:13px;color:var(--ink2)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:14px 0}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.tile .tl{font-size:12px;color:var(--ink2)}
+.tile .tv{font-size:26px;font-weight:600;margin:2px 0}
+.tile .td{font-size:12px;color:var(--muted)}
+.tile .td .up{color:var(--good-text)} .tile .td .down{color:var(--bad-text)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media (max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{color:var(--muted);font-weight:500;text-align:left;padding:4px 8px;border-bottom:1px solid var(--grid);white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid var(--grid);white-space:nowrap}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--ghost)}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.sd-ok{background:var(--good)} .sd-err{background:var(--critical)} .sd-retry{background:var(--warning)}
+.hbar-row{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:6px;cursor:default}
+.hbar-row:hover{background:var(--ghost)}
+.hbar-label{width:128px;flex:none;font-size:12.5px;color:var(--ink2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar-track{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
+.hbar-bar{height:16px;border-radius:0 4px 4px 0;flex:none;min-width:2px}
+.hbar-val{font-size:12px;color:var(--ink1);font-variant-numeric:tabular-nums;white-space:nowrap}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin:2px 0 8px}
+.legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+details.twin{margin-top:8px;font-size:12px}
+details.twin summary{color:var(--muted);cursor:pointer;user-select:none}
+.chart{display:block;width:100%;height:auto}
+.axis-t{fill:var(--muted);font-size:10.5px;font-variant-numeric:tabular-nums}
+.gridln{stroke:var(--grid);stroke-width:1}
+.baseline{stroke:var(--baseline);stroke-width:1}
+/* 探索器（变体 B） */
+.explorer{display:grid;grid-template-columns:264px 1fr;gap:14px}
+@media (max-width:900px){.explorer{grid-template-columns:1fr}}
+.side{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;height:fit-content;font-size:12.5px}
+.side h4{margin:12px 0 6px;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.05em}
+.side h4:first-child{margin-top:0}
+.side-item{display:flex;justify-content:space-between;gap:6px;padding:4px 8px;border-radius:6px;cursor:pointer;color:var(--ink2)}
+.side-item:hover{background:var(--ghost)}
+.side-item[aria-pressed="true"]{background:var(--c1);color:#fff}
+.side-item .meta{color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px}
+.side-item[aria-pressed="true"] .meta{color:rgba(255,255,255,.8)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--border);border-radius:999px;padding:2px 10px;cursor:pointer;color:var(--ink2);font-size:12px;background:transparent}
+.chip:hover{background:var(--ghost)}
+.chip[aria-pressed="true"]{background:var(--ink1);color:var(--surface);border-color:var(--ink1)}
+.mini-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.mini-tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 12px}
+.mini-tile .tl{font-size:11.5px;color:var(--muted)}
+.mini-tile .tv{font-size:19px;font-weight:600}
+/* 抽屉 / 弹层 */
+.drawer-veil{position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:40}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,94vw);background:var(--surface);border-left:1px solid var(--border);z-index:41;overflow:auto;padding:18px 20px;box-shadow:-12px 0 30px rgba(0,0,0,.15)}
+.drawer h2{margin:0 0 4px;font-size:16px}
+.drawer .close{position:absolute;top:12px;right:14px;border:0;background:transparent;font-size:20px;color:var(--muted);cursor:pointer}
+.kv{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;font-size:12.5px;margin:10px 0}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-variant-numeric:tabular-nums}
+.seg2bar{display:flex;height:18px;border-radius:0 4px 4px 0;overflow:hidden;margin:6px 0 4px}
+.seg2bar div:first-child{border-radius:4px 0 0 4px}
+.excerpt{background:var(--page);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font:12px/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;max-height:220px;overflow:auto;margin:6px 0 12px;color:var(--ink2)}
+.refpath{font-size:11px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+/* 对比（变体 C） */
+.mtx td.best{font-weight:700}
+.best-tag{font-size:10px;border:1px solid var(--border);border-radius:4px;padding:0 4px;margin-left:6px;color:var(--ink2);font-weight:500;vertical-align:1px}
+.out-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.out-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--surface)}
+.out-card .oh{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px;margin-bottom:2px}
+.out-card .om{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-bottom:8px}
+.img-tile{aspect-ratio:2/3;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;text-align:center;font-size:11.5px;color:var(--ink2);padding:10px;margin-bottom:6px}
+.tabs{display:flex;gap:8px}
+.tabs button{font:inherit;font-size:13px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;padding:5px 14px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--ink1);color:var(--surface);border-color:var(--ink1)}
+/* 悬浮切换条 */
+#switcher{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:50;display:flex;align-items:center;gap:6px;background:var(--ink1);color:var(--surface);border-radius:999px;padding:7px 10px;box-shadow:0 6px 24px rgba(0,0,0,.28);font-size:13px;user-select:none}
+#switcher button{border:0;background:transparent;color:inherit;font-size:15px;cursor:pointer;padding:2px 8px;border-radius:999px}
+#switcher button:hover{background:rgba(255,255,255,.18)}
+#switcher .vlabel{min-width:150px;text-align:center;font-weight:600}
+/* tooltip */
+#tooltip{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.18);max-width:280px}
+#tooltip .trow{display:flex;align-items:center;gap:7px;margin:2px 0}
+#tooltip .tkey{width:12px;height:2px;flex:none;border-radius:1px}
+#tooltip .tval{font-weight:600;font-variant-numeric:tabular-nums}
+#tooltip .tname{color:var(--muted)}
+#tooltip .tcat{color:var(--muted);margin-bottom:3px}
+.note{font-size:11.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="proto-banner">PROTOTYPE · 一次性 UI 原型 · mock 数据 · docs/prototypes/monitor-platform-prototype.html</div>
+<header class="topbar">
+  <div class="brand">oh-story 监控与评估平台 <span class="ver">v1 原型</span></div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span class="note" id="range-note"></span>
+    <button id="theme-toggle" title="切换浅色/深色">🌓</button>
+  </div>
+</header>
+<main id="app"></main>
+<div id="tooltip" hidden></div>
+<div id="overlay-root"></div>
+<nav id="switcher" aria-label="原型变体切换">
+  <button id="prev" aria-label="上一个变体">◀</button>
+  <span class="vlabel" id="vlabel"></span>
+  <button id="next" aria-label="下一个变体">▶</button>
+</nav>
+<script>
+'use strict';
+/* ================= 工具 ================= */
+const $=(s,r=document)=>r.querySelector(s);
+const NS='http://www.w3.org/2000/svg';
+function h(tag,props,...kids){
+  if(typeof props==='string'){ // 字符串第二参视为 class；若紧跟一个普通对象则并入 props
+    const extra=(kids[0]&&typeof kids[0]==='object'&&!Array.isArray(kids[0])&&!kids[0].nodeType)?kids.shift():null;
+    props={class:props,...(extra||{})};}
+  const n=document.createElement(tag);for(const[k,v]of Object.entries(props||{})){
+  if(k==='class')n.className=v;else if(k.startsWith('on'))n.addEventListener(k.slice(2),v);
+  else{if(v==null||v===false)continue;n.setAttribute(k,v===true?'':v);}}for(const kid of kids.flat(9)){if(kid==null||kid===false)continue;n.append(kid.nodeType?kid:document.createTextNode(kid));}return n}
+function sv(tag,attrs){const n=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs||{})){
+  if(k==='fill'||k==='stroke'){n.style.setProperty(k,v);}else if(k==='style'){n.style.cssText+=';'+v;}else n.setAttribute(k,v);}return n}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=mulberry32(20260915);
+const rint=(a,b)=>a+Math.floor(R()*(b-a+1));
+const pick=arr=>arr[Math.floor(R()*arr.length)];
+function wpick(items){const tot=items.reduce((s,x)=>s+x.w,0);let r=R()*tot;for(const x of items){r-=x.w;if(r<=0)return x}return items[items.length-1]}
+const compact=v=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':String(Math.round(v));
+const fmtCNY=v=>v>=100?'¥'+Math.round(v).toLocaleString('zh-CN'):v>=10?'¥'+v.toFixed(1):'¥'+v.toFixed(2);
+const fmtCNYc=v=>v>=1000?'¥'+compact(v):fmtCNY(v);
+const fmtDur=ms=>ms>=60000?(ms/60000).toFixed(1)+'min':ms>=1000?(ms/1000).toFixed(1)+'s':Math.round(ms)+'ms';
+const fmtPct=v=>(v*100).toFixed(1)+'%';
+const pct=(sorted,p)=>sorted.length?sorted[Math.min(sorted.length-1,Math.floor(p*sorted.length))]:0;
+const fmtDate=ts=>{const d=new Date(ts);return (d.getMonth()+1)+'/'+d.getDate()};
+const fmtTime=ts=>{const d=new Date(ts);const p=n=>String(n).padStart(2,'0');return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
+
+/* ================= 域模型（名词均取自真实代码库；价格为虚构 mock） ================= */
+const MODEL_COLORS={'deepseek-chat':'--c1','deepseek-reasoner':'--c7','qwen3-max':'--c3','qwen-image-2.0':'--c2','gpt-image-2':'--c4','seedance-1-lite':'--c8','music-3.0':'--c6'};
+const TEXT_MODELS={
+  'deepseek-chat':{kind:'text',pin:1,pout:2,pcache:.1},
+  'deepseek-reasoner':{kind:'text',pin:4,pout:16,pcache:.4},
+  'qwen3-max':{kind:'text',pin:6,pout:24,pcache:1.2},
+};
+const MEDIA_MODELS={
+  'qwen-image-2.0':{kind:'image',per:.25,unit:'图'},
+  'gpt-image-2':{kind:'image',per:.42,unit:'图'},
+  'seedance-1-lite':{kind:'video',per:.9,unit:'段'},
+  'music-3.0':{kind:'music',per:.5,unit:'段'},
+};
+const STAGES=[
+  {id:'novel-analyze',name:'小说分析',kind:'text',roles:['chapter-extractor','story-architect'],w:8},
+  {id:'develop',name:'创作简报',kind:'text',roles:[null,'story-architect'],w:9},
+  {id:'write',name:'剧本写作',kind:'text',roles:['narrative-writer'],w:20},
+  {id:'assets',name:'视觉资产',kind:'text',roles:['character-designer'],w:9},
+  {id:'storyboard',name:'分镜',kind:'text',roles:['narrative-writer',null],w:13},
+  {id:'img-prompts',name:'图片提示词',kind:'text',roles:[null],w:6},
+  {id:'video-prompts',name:'视频提示词',kind:'text',roles:[null],w:4},
+  {id:'review',name:'审查',kind:'text',roles:['consistency-checker'],w:8},
+  {id:'research',name:'资料调研',kind:'text',roles:['story-researcher','story-explorer'],w:5},
+  {id:'image-gen',name:'出图',kind:'image',w:11},
+  {id:'video-gen',name:'视频生成',kind:'video',w:3},
+  {id:'music-gen',name:'音乐',kind:'music',w:2},
+];
+const ERROR_CODES=[
+  {code:'RATE_LIMIT',w:3,retryable:true,status:429},
+  {code:'TIMEOUT',w:2.5,retryable:true,status:null},
+  {code:'EMPTY_RESPONSE',w:2,retryable:true,status:null},
+  {code:'SERVER',w:1.5,retryable:true,status:502},
+  {code:'QUOTA',w:.8,retryable:false,status:402},
+  {code:'CONTEXT_WINDOW_EXCEEDED',w:.7,retryable:false,status:400},
+];
+const PURPOSE_LABEL={conversation:'对话',compaction:'上下文压缩','session-title':'会话起题'};
+
+/* ================= mock 数据生成 ================= */
+const NOW=new Date(2026,8,15,23,59,59).getTime(); // 2026-09-15
+const WINDOW_DAYS=60;
+const calls=[];
+(function genCalls(){
+  let cid=1;
+  for(let d=WINDOW_DAYS-1;d>=0;d--){
+    const day=new Date(NOW-(d+1)*86400000+1);day.setHours(0,0,0,0);
+    const base=day.getTime();
+    const jobs=rint(1,3);
+    const n=rint(10,26);
+    for(let i=0;i<n;i++){
+      const stage=wpick(STAGES);
+      const job=rint(1,jobs);
+      const ts=base+rint(9,22)*3600000+rint(0,3599)*1000;
+      const mmdd=fmtDate(ts).replace('/','');
+      const c={id:'c'+String(cid++).padStart(4,'0'),stage,ts,
+        sessionId:`s${mmdd}-${job}`,purpose:'conversation',retries:0,error:null,role:null};
+      if(stage.kind==='text'){
+        const reasonerShare=['novel-analyze','review'].includes(stage.id)?.45:.12;
+        c.model=R()<reasonerShare?'deepseek-reasoner':(R()<.14?'qwen3-max':'deepseek-chat');
+        if(R()<.05)c.purpose='compaction';else if(R()<.02)c.purpose='session-title';
+        const total=rint(4000,60000),frac=.3+R()*.55;
+        c.cacheRead=Math.round(total*frac);c.tokensIn=total-c.cacheRead;
+        const think=c.model==='deepseek-reasoner'?rint(500,6000):0;
+        c.tokensOut=rint(300,4500)+think;
+        const ttft=c.model==='deepseek-reasoner'?rint(2000,8000):rint(250,1500);
+        const rate=25+R()*65;
+        c.ttft=ttft;c.decodeMs=c.tokensOut/rate*1000;
+        c.dur=ttft+c.decodeMs+rint(100,600);
+        const m=TEXT_MODELS[c.model];
+        const inCost=(c.tokensIn/1e6)*m.pin+(c.cacheRead/1e6)*m.pcache;
+        if(R()<.05){
+          const e=wpick(ERROR_CODES);
+          c.tokensOut=0;c.dur=ttft+rint(200,1500);
+          c.error={code:e.code,status:e.status,requestId:'req-'+Math.floor(R()*1e8).toString(36)};
+          if(e.retryable)c.retries=rint(1,2);
+          c.cost=inCost; // 失败调用仍计输入侧成本
+        }else{
+          c.cost=inCost+(c.tokensOut/1e6)*m.pout;
+          if(R()<.03)c.retries=rint(1,2);
+        }
+      }else{
+        c.model=stage.kind==='image'?(R()<.65?'qwen-image-2.0':'gpt-image-2')
+          :stage.kind==='video'?'seedance-1-lite':'music-3.0';
+        const m=MEDIA_MODELS[c.model];
+        c.units=rint(1,stage.kind==='image'?6:1);
+        c.ttft=null;c.decodeMs=null;
+        c.dur=stage.kind==='video'?rint(40000,120000):stage.kind==='music'?rint(8000,30000):rint(3000,15000);
+        if(R()<.06){
+          const e=wpick(ERROR_CODES.slice(0,2));
+          c.error={code:e.code,status:e.status,requestId:'req-'+Math.floor(R()*1e8).toString(36)};
+          if(e.retryable)c.retries=rint(1,2);
+          c.cost=0;c.units=0;
+        }else{c.cost=c.units*m.per;if(R()<.03)c.retries=rint(1,2);}
+      }
+      if(stage.roles)c.role=pick(stage.roles);
+      const ds=new Date(ts);const p=n=>String(n).padStart(2,'0');
+      const dayStr=`${ds.getFullYear()}-${p(ds.getMonth()+1)}-${p(ds.getDate())}`;
+      c.inputRef=`store/${dayStr}/${c.id}.in.json`;c.outputRef=`store/${dayStr}/${c.id}.out.json`;
+      calls.push(c);
+    }
+  }
+  calls.sort((a,b)=>b.ts-a.ts);
+})();
+
+/* ================= 聚合 ================= */
+function metrics(list){
+  const n=list.length;
+  const cost=list.reduce((s,c)=>s+c.cost,0);
+  const errors=list.filter(c=>c.error).length;
+  const ok=list.filter(c=>!c.error);
+  const durs=ok.map(c=>c.dur).sort((a,b)=>a-b);
+  const units=list.reduce((s,c)=>s+(c.units||0),0);
+  const tokIn=list.reduce((s,c)=>s+(c.tokensIn||0)+(c.cacheRead||0),0);
+  const tokOut=list.reduce((s,c)=>s+(c.tokensOut||0),0);
+  return{n,cost,errors,errRate:n?errors/n:0,durAvg:ok.length?ok.reduce((s,c)=>s+c.dur,0)/ok.length:0,
+    durP50:pct(durs,.5),durP95:pct(durs,.95),units,tokIn,tokOut};
+}
+function inWindow(days){const cut=NOW-days*86400000;return calls.filter(c=>c.ts>cut)}
+function prevWindow(days){const hi=NOW-days*86400000,lo=hi-days*86400000;return calls.filter(c=>c.ts>lo&&c.ts<=hi)}
+function groupBy(list,fn){const m=new Map();for(const c of list){const k=fn(c);if(k==null)continue;if(!m.has(k))m.set(k,[]);m.get(k).push(c)}return m}
+function byDay(list,days){const days_=[];for(let d=days-1;d>=0;d--)days_.push(NOW-(d+1)*86400000+43200000);
+  const buckets=days_.map(ts=>({ts,cost:0,n:0,units:0,errors:0}));
+  for(const c of list){const back=Math.floor((NOW-c.ts)/86400000);if(back<0||back>=days)continue;const b=buckets[days-1-back];b.cost+=c.cost;b.n++;b.units+=c.units||0;if(c.error)b.errors++;}
+  return buckets}
+const delta=(cur,prev)=>prev>0?(cur-prev)/prev:null;
+
+/* ================= 共享状态 / tooltip ================= */
+const state={days:30,type:'all',stage:null,role:undefined,model:null,benchTab:'text',benchTask:0,imgTask:0};
+function filtered(list){
+  return (list||inWindow(state.days)).filter(c=>{
+    if(state.type!=='all'&&c.stage.kind!==state.type)return false;
+    if(state.stage&&c.stage.id!==state.stage)return false;
+    if(state.role!==undefined&&((c.role||null)!==state.role))return false;
+    if(state.model&&c.model!==state.model)return false;
+    return true;});
+}
+const tip=$('#tooltip');
+function showTip(e,build){tip.replaceChildren(build());tip.hidden=false;moveTip(e)}
+function moveTip(e){const pad=14;let x=e.clientX+pad,y=e.clientY+pad;
+  const r=tip.getBoundingClientRect();
+  if(x+r.width>innerWidth-8)x=e.clientX-r.width-pad;
+  if(y+r.height>innerHeight-8)y=e.clientY-r.height-pad;
+  tip.style.left=x+'px';tip.style.top=y+'px'}
+function hideTip(){tip.hidden=true}
+function tipRow(color,val,name){return h('div','trow',h('span','tkey',{style:`background:var(${color})`}),h('span','tval',val),h('span','tname',name))}
+function tipCat(txt){return h('div','tcat',txt)}
+
+/* ================= 图表构件（SVG，颜色走 CSS 变量，主题切换免重绘） ================= */
+function niceMax(v){if(v<=0)return 1;const p=Math.pow(10,Math.floor(Math.log10(v)));const q=v/p;return (q<=1?1:q<=2?2:q<=5?5:10)*p}
+function sparkline(values,{w=118,h=30}={}){
+  const svg=sv('svg',{viewBox:`0 0 ${w} ${h}`,class:'chart','aria-hidden':'true'});
+  if(!values.length)return svg;
+  const mx=Math.max(...values,1),step=values.length>1?(w-6)/(values.length-1):0;
+  const pts=values.map((v,i)=>[3+i*step,h-3-(v/mx)*(h-6)]);
+  const d='M'+pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join('L');
+  svg.append(sv('path',{d,fill:'none',stroke:'var(--baseline)','stroke-width':2,'stroke-linecap':'round','stroke-linejoin':'round'}));
+  const last=pts[pts.length-1];
+  const dot=sv('circle',{cx:last[0].toFixed(1),cy:last[1].toFixed(1),r:3.5,fill:'var(--c1)'});
+  dot.style.setProperty('stroke','var(--surface)');dot.style.setProperty('stroke-width','2');
+  svg.append(dot);return svg;
+}
+function lineChart({labels,series,fmt,w=580,ht=190,tilt=''}){
+  const P={l:48,r:12,t:10,b:22},iw=w-P.l-P.r,ih=ht-P.t-P.b;
+  const svg=sv('svg',{viewBox:`0 0 ${w} ${ht}`,class:'chart'});
+  const mx=niceMax(Math.max(...series.flatMap(s=>s.values),0.001));
+  const x=i=>P.l+(labels.length>1?i*(iw/(labels.length-1)):iw/2);
+  const y=v=>P.t+ih-(v/mx)*ih;
+  for(let g=0;g<=4;g++){const gy=P.t+ih-g*(ih/4);
+    svg.append(sv('line',{x1:P.l,x2:w-P.r,y1:gy,y2:gy,class:'gridln'}));
+    const t=sv('text',{x:P.l-7,y:gy+3.5,'text-anchor':'end',class:'axis-t'});t.textContent=fmt(mx*g/4);svg.append(t);}
+  svg.append(sv('line',{x1:P.l,x2:w-P.r,y1:P.t+ih,y2:P.t+ih,class:'baseline'}));
+  const every=Math.max(1,Math.ceil(labels.length/6));
+  labels.forEach((lb,i)=>{if(i%every===0||i===labels.length-1){const t=sv('text',{x:x(i),y:ht-6,'text-anchor':'middle',class:'axis-t'});t.textContent=lb;svg.append(t);}});
+  for(const s of series){
+    if(s.area){const d='M'+s.values.map((v,i)=>`${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join('L')+`L${x(s.values.length-1).toFixed(1)} ${(P.t+ih).toFixed(1)}L${P.l} ${(P.t+ih).toFixed(1)}Z`;
+      const a=sv('path',{d,fill:`var(${s.color})`});a.style.setProperty('fill-opacity','.1');svg.append(a);}
+    const d='M'+s.values.map((v,i)=>`${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join('L');
+    svg.append(sv('path',{d,fill:'none',stroke:`var(${s.color})`,'stroke-width':2,'stroke-linecap':'round','stroke-linejoin':'round'}));
+  }
+  const cross=sv('line',{y1:P.t,y2:P.t+ih,stroke:'var(--baseline)','stroke-width':1,visibility:'hidden'});
+  svg.append(cross);
+  const hit=sv('rect',{x:P.l,y:P.t,width:iw,height:ih,fill:'transparent',tabindex:0,style:'cursor:crosshair;outline:none'});
+  const move=e=>{
+    const r=svg.getBoundingClientRect();
+    const rel=(e.clientX-r.left)/r.width*w;
+    const i=Math.max(0,Math.min(labels.length-1,Math.round((rel-P.l)/(iw/(Math.max(labels.length-1,1))))));
+    cross.setAttribute('x1',x(i));cross.setAttribute('x2',x(i));cross.setAttribute('visibility','visible');
+    showTip(e,()=>h(null,null,tipCat(`${tilt}${labels[i]}`),...series.map(s=>tipRow(s.color,fmt(s.values[i]),s.name))));
+  };
+  hit.addEventListener('pointermove',move);
+  hit.addEventListener('pointerleave',hideTip);
+  hit.addEventListener('blur',hideTip);
+  svg.append(hit);
+  return svg;
+}
+function hbar(items,fmt,cvar='--c1'){
+  const mx=Math.max(...items.map(i=>i.value),0.0001);
+  const wrap=h('div');
+  for(const it of items){
+    const row=h('div','hbar-row',
+      h('div','hbar-label',{title:it.label},it.label),
+      h('div','hbar-track',
+        h('div','hbar-bar',{style:`width:${(it.value/mx*88).toFixed(1)}%;background:var(${cvar})`}),
+        h('span','hbar-val',fmt(it.value)+(it.sub?` · ${it.sub}`:''))));
+    row.addEventListener('pointermove',e=>showTip(e,()=>h(null,null,tipCat(it.label),tipRow(cvar,fmt(it.value),it.tipName||''))));
+    row.addEventListener('pointerleave',hideTip);
+    wrap.append(row);
+  }
+  return wrap;
+}
+function groupedBarChart({groups,series,fmt,w=620,ht=250}){
+  const P={l:52,r:10,t:8,b:34},iw=w-P.l-P.r,ih=ht-P.t-P.b;
+  const svg=sv('svg',{viewBox:`0 0 ${w} ${ht}`,class:'chart'});
+  const mx=niceMax(Math.max(...series.flatMap(s=>s.values),0.001));
+  const y=v=>P.t+ih-(v/mx)*ih;
+  for(let g=0;g<=4;g++){const gy=P.t+ih-g*(ih/4);
+    svg.append(sv('line',{x1:P.l,x2:w-P.r,y1:gy,y2:gy,class:'gridln'}));
+    const t=sv('text',{x:P.l-7,y:gy+3.5,'text-anchor':'end',class:'axis-t'});t.textContent=fmt(mx*g/4);svg.append(t);}
+  svg.append(sv('line',{x1:P.l,x2:w-P.r,y1:P.t+ih,y2:P.t+ih,class:'baseline'}));
+  const band=iw/groups.length,bw=15,gap=2;
+  groups.forEach((gname,gi)=>{
+    const gx=P.l+gi*band;
+    const n=series.length,slot=(band-20)/n;
+    series.forEach((s,si)=>{
+      const v=s.values[gi];if(v==null)return;
+      const bx=gx+10+si*slot+ (slot-bw-gap)/2;
+      const r=sv('rect',{x:bx.toFixed(1),y:y(v).toFixed(1),width:bw,height:(P.t+ih-y(v)).toFixed(1),rx:4,fill:`var(${s.color})`});
+      r.style.setProperty('stroke','var(--surface)');r.style.setProperty('stroke-width',gap);
+      svg.append(r);
+    });
+    const t=sv('text',{x:(gx+band/2).toFixed(1),y:ht-16,'text-anchor':'middle',class:'axis-t'});
+    t.textContent=gname.length>7?gname.slice(0,6)+'…':gname;svg.append(t);
+    const hit=sv('rect',{x:gx,y:P.t,width:band,height:ih+18,fill:'transparent',tabindex:0,style:'cursor:default;outline:none'});
+    const show=e=>showTip(e,()=>h(null,null,tipCat(gname),...series.map(s=>tipRow(s.color,s.values[gi]==null?'—':fmt(s.values[gi]),s.name))));
+    hit.addEventListener('pointermove',show);hit.addEventListener('focus',show);
+    hit.addEventListener('pointerleave',hideTip);hit.addEventListener('blur',hideTip);
+    svg.append(hit);
+  });
+  return svg;
+}
+/* 表格视图孪生 */
+function twinTable(head,rows){
+  return h('details','twin',h('summary',null,'表格视图'),
+    h('table',null,h('thead',null,h('tr',null,head.map(x=>h('th',x.t==='num'?'num':null,x.l)))),
+      h('tbody',null,rows.map(r=>h('tr',null,r.map((c,i)=>h('td',head[i].t==='num'?'num':null,c)))))));
+}
+
+/* ================= 详情抽屉 ================= */
+function openDetail(c){
+  const veil=h('div','drawer-veil');const dr=h('div','drawer',{role:'dialog','aria-label':'调用详情'});
+  const close=()=>{veil.remove();dr.remove();hideTip()};
+  veil.addEventListener('click',close);
+  const esc=e=>{if(e.key==='Escape'){close();document.removeEventListener('keydown',esc)}};
+  document.addEventListener('keydown',esc);
+  const m=c.error;
+  dr.append(
+    h('button','close',{onclick:close},'×'),
+    h('h2',null,`${c.stage.name} · ${c.model}`),
+    h('div','note',`调用 ${c.id} · 会话 ${c.sessionId} · ${fmtTime(c.ts)}`),
+    h('dl','kv',
+      h('dt',null,'角色'),h('dd',null,c.role||'主 agent'),
+      h('dt',null,'调用目的'),h('dd',null,PURPOSE_LABEL[c.purpose]||c.purpose),
+      h('dt',null,'状态'),h('dd',null,m?`${m.code}（${m.status||'网络层'}）`:(c.retries?`成功（重试 ${c.retries} 次后）`:'成功')),
+      h('dt',null,'重试'),h('dd',null,String(c.retries)),
+      m?h('dt',null,'request-id'):null,m?h('dd',null,m.requestId):null),
+    h('h3',null,'耗时'),
+    ...(c.ttft!=null?[
+      h('div','seg2bar',
+        h('div',{style:`width:${(c.ttft/c.dur*100).toFixed(1)}%;background:var(--baseline)`}),
+        h('div',{style:`flex:1;background:var(--c1)`})),
+      h('div','note',`首字 ${fmtDur(c.ttft)}（灰） + 解码 ${fmtDur(c.decodeMs)}（蓝） = ${fmtDur(c.dur)}`)]
+    :[h('div','note',fmtDur(c.dur))]),
+    h('h3',null,'用量与成本'),
+    h('dl','kv',
+      c.tokensIn!=null?h('dt',null,'输入 tokens'):null,
+      c.tokensIn!=null?h('dd',null,`${compact(c.tokensIn)}（未命中缓存）+ ${compact(c.cacheRead)}（缓存读）`):null,
+      c.tokensOut!=null?h('dt',null,'输出 tokens'):null,
+      c.tokensOut!=null?h('dd',null,compact(c.tokensOut)):null,
+      c.units!=null?h('dt',null,'生成数量'):null,
+      c.units!=null?h('dd',null,`${c.units} ${MEDIA_MODELS[c.model].unit}`):null,
+      h('dt',null,'成本'),h('dd',null,fmtCNY(c.cost)),
+      h('dt',null,'计价版本'),h('dd',null,'prices v2026.09（mock）')),
+    h('h3',null,'输入'),
+    h('div','refpath',c.inputRef),
+    h('pre','excerpt',excerptIn(c)),
+    h('h3',null,'输出'),
+    h('div','refpath',c.outputRef),
+    m?h('pre','excerpt',`{ "error": { "code": "${m.code}", "status": ${m.status||'null'}, "requestId": "${m.requestId}" } }\n（失败调用：无输出内容）`)
+     :h('pre','excerpt',excerptOut(c)));
+  $('#overlay-root').append(veil,dr);
+}
+function excerptIn(c){
+  if(c.stage.kind==='text')return `【系统】你是 ${c.role||'主 agent'}，负责「${c.stage.name}」阶段交付物，遵守 creator-first 契约。\n【任务】依据以下上下文完成本阶段产出。\n【上下文 · 摘要】\n- 剧集：短剧《雨夜追凶》第 ${1+(parseInt(c.id.slice(1),10)%12)} 集\n- 前情：林澈在雨夜小巷甩掉追踪者，霓虹灯牌在积水里碎成光斑…\n- 人物状态：林澈（警觉 / 左臂划伤）、苏晚（身份未暴露）\n…（完整输入 ${compact(c.tokensIn+c.cacheRead)} tokens 见 ${c.inputRef}）`;
+  return `【任务】${c.stage.name} · 批量生成\n【参数】比例 2:3 · 风格参考 视觉设定.md · 第 ${1+(parseInt(c.id.slice(1),10)%12)} 集\n【提示词】（见 ${c.inputRef}）`;
+}
+function excerptOut(c){
+  if(c.stage.kind==='text')return `镜头 1｜雨夜·小巷｜中景：雨水沿霓虹灯牌滴落，林澈背靠湿墙平复呼吸。\n镜头 2｜同场｜特写：掌心染血的 U 盘，霓虹光在其表面流动。\n镜头 3｜巷口｜全景：黑衣人影切入画面，构图左强右弱。\n…（完整输出 ${compact(c.tokensOut)} tokens 见 ${c.outputRef}）`;
+  return `✓ 生成 ${c.units} ${MEDIA_MODELS[c.model].unit}\n· ${c.outputRef}（sha256 已记录）\n· 规格 1024×1536`;
+}
+
+/* ================= KPI 构件 ================= */
+function statTile({label,value,delta,goodUp,spark}){
+  let d=h('span','note','— 较上一周期');
+  if(delta!=null){
+    const up=delta>=0;const cls=(goodUp==null)?'':(up===goodUp?'up':'down');
+    d=h('span',{class:cls||'note'},`${up?'▲':'▼'} ${Math.abs(delta*100).toFixed(1)}% 较上一周期`);
+  }
+  return h('div','tile',h('div','tl',label),h('div','tv',value),h('div','td',d),
+    spark?h('div',{style:'margin-top:4px'},sparkline(spark)):null);
+}
+function miniTile(label,value){return h('div','mini-tile',h('div','tl',label),h('div','tv',value))}
+
+/* ================= 变体 A · 总览驾驶舱 ================= */
+function renderA(root){
+  const cur=metrics(filtered()),prev=metrics(filtered(prevWindow(state.days)));
+  const days=byDay(filtered(),state.days);
+  root.append(
+    filterRow(),
+    h('div','card',
+      h('h3',null,`近 ${state.days} 天总成本`),
+      h('div','hero',
+        h('div','hv',fmtCNYc(cur.cost)),
+        h('div',null,h('div','hl',`调用 ${cur.n.toLocaleString('zh-CN')} 次 · 错误 ${fmtPct(cur.errRate)} · 生成图片 ${cur.units} 张`),
+          h('div','hl',prev.cost>0?`上一周期 ${fmtCNYc(prev.cost)}`:'（无上一周期数据）')),
+        h('div',{style:'margin-left:auto'},sparkline(days.map(d=>d.cost),{w:180,h:44})))),
+    h('div','kpis',
+      statTile({label:'调用次数',value:cur.n.toLocaleString('zh-CN'),delta:delta(cur.n,prev.n),goodUp:null,spark:days.map(d=>d.n)}),
+      statTile({label:'错误率',value:fmtPct(cur.errRate),delta:delta(cur.errRate,prev.errRate),goodUp:false,spark:days.map(d=>d.errors/Math.max(d.n,1))}),
+      statTile({label:'平均耗时',value:fmtDur(cur.durAvg),delta:delta(cur.durAvg,prev.durAvg),goodUp:false,spark:days.map(d=>d.n?d.cost/d.n:0)}),
+      statTile({label:'生成图片',value:cur.units+' 张',delta:delta(cur.units,prev.units),goodUp:null,spark:days.map(d=>d.units)})),
+    h('div','grid2',
+      chartCard('每日成本（¥）',null,lineChart({labels:days.map(d=>fmtDate(d.ts)),series:[{name:'成本',color:'--c1',values:days.map(d=>d.cost),area:true}],fmt:v=>compact(v),tilt:''}),
+        [['日期',...days.map(d=>fmtDate(d.ts))],['成本',...days.map(d=>fmtCNYc(d.cost))]]),
+      chartCard('每日调用量（次）',null,lineChart({labels:days.map(d=>fmtDate(d.ts)),series:[{name:'调用次数',color:'--c3',values:days.map(d=>d.n)}],fmt:v=>compact(v),tilt:''}),
+        [['日期',...days.map(d=>fmtDate(d.ts))],['调用次数',...days.map(d=>String(d.n))]])),
+    h('div','grid3',
+      dimBar('成本 · 按阶段',filtered(),c=>c.stage.name,v=>fmtCNYc(v)),
+      dimBar('成本 · 按角色',filtered(),c=>c.role||'主 agent',v=>fmtCNYc(v)),
+      dimBar('成本 · 按模型',filtered(),c=>c.model,v=>fmtCNYc(v))),
+    h('div','grid2',
+      (function(){const g=groupBy(filtered().filter(c=>c.error),c=>c.error.code);
+        const items=[...g.entries()].map(([code,list])=>({label:code,value:list.length,sub:`${list.length} 次`})).sort((a,b)=>b.value-a.value);
+        return h('div','card',h('h3',null,'错误分类（次数）'),h('div','sub','失败调用按规范错误码聚合'),
+          items.length?hbar(items,v=>String(v),'--c8'):h('div','note','本窗口无错误'),
+          twinTable([{l:'错误码'},{l:'次数',t:'num'}],items.map(i=>[i.label,String(i.value)])));})(),
+      recentTable(filtered().slice(0,15))));
+}
+function chartCard(title,sub,chart,twinRows){
+  return h('div','card',h('h3',null,title),sub?h('div','sub',sub):null,chart,
+    twinTable(twinRows[0].map((_,i)=>({l:twinRows[0][i],t:i===0?null:'num'})),
+      twinRows[0].map((_,ri)=>twinRows.map(col=>col[ri]))));
+}
+function dimBar(title,list,fn,fmt){
+  const g=groupBy(list,fn);
+  const items=[...g.entries()].map(([k,l])=>({label:k,value:l.reduce((s,c)=>s+c.cost,0),sub:`${l.length} 次`})).sort((a,b)=>b.value-a.value).slice(0,9);
+  return h('div','card',h('h3',null,title),h('div','sub','单指标 · 单色（顺序无义，不着色深浅）'),
+    items.length?hbar(items,fmt,'--c1'):h('div','note','无数据'),
+    twinTable([{l:'维度'},{l:'成本',t:'num'},{l:'次数',t:'num'}],items.map(i=>[i.label,fmt(i.value),String(i.sub)])));
+}
+function recentTable(list){
+  return h('div','card',h('h3',null,'最近调用'),h('div','sub','点击行查看完整输入/输出'),
+    h('div',{style:'overflow:auto'},h('table',null,
+      h('thead',null,h('tr',null,h('th',null,'时间'),h('th',null,'阶段'),h('th',null,'角色'),h('th',null,'模型'),h('th',{class:'num'},'耗时'),h('th',{class:'num'},'成本'),h('th',null,'状态'))),
+      h('tbody',null,list.map(c=>h('tr','click',{onclick:()=>openDetail(c)},
+        h('td',null,fmtTime(c.ts)),h('td',null,c.stage.name),h('td',null,c.role||'主 agent'),h('td',null,c.model),
+        h('td','num',fmtDur(c.dur)),h('td','num',fmtCNY(c.cost)),
+        h('td',null,h('span','status-dot '+(c.error?'sd-err':c.retries?'sd-retry':'sd-ok')),
+          c.error?c.error.code:(c.retries?`重试${c.retries}后成功`:'成功'))))))));
+}
+function filterRow(){
+  const seg=(label,val)=>h('button',{onclick:()=>{state.days=val;rerender()},'aria-pressed':String(state.days===val)},label);
+  return h('div','filterrow',
+    h('div','seg',seg('今天',1),seg('近 7 天',7),seg('近 30 天',30)),
+    h('select',{onchange:e=>{state.type=e.target.value;rerender()}},
+      h('option',{value:'all',selected:state.type==='all'?'':null},'全部类型'),
+      h('option',{value:'text',selected:state.type==='text'?'':null},'文本'),
+      h('option',{value:'image',selected:state.type==='image'?'':null},'图像'),
+      h('option',{value:'video',selected:state.type==='video'?'':null},'视频'),
+      h('option',{value:'music',selected:state.type==='music'?'':null},'音乐')));
+}
+
+/* ================= 变体 B · 探索器 ================= */
+function renderB(root){
+  const all=inWindow(state.days);
+  const list=filtered();
+  const m=metrics(list);
+  const stageG=groupBy(all,c=>c.stage.id);
+  const roleG=groupBy(all,c=>c.role||'主agent');
+  const modelG=groupBy(all,c=>c.model);
+  const cap=Math.min(list.length,200);
+  root.append(
+    h('div','filterrow',
+      h('div','seg',['all','text','image','video','music'].map(t=>
+        h('button',{onclick:()=>{state.type=t;rerender()},'aria-pressed':String(state.type===t)},
+          {all:'全部',text:'文本',image:'图像',video:'视频',music:'音乐'}[t]))),
+      h('div','seg',[7,30].map(d=>h('button',{onclick:()=>{state.days=d;rerender()},'aria-pressed':String(state.days===d)},`近 ${d} 天`))),
+      h('span','note','左侧维度点击即筛选；表格行点击看详情')),
+    h('div','explorer',
+      h('aside','side',
+        h('h4',null,'阶段'),
+        ...STAGES.filter(s=>stageG.has(s.id)).map(s=>{
+          const l=stageG.get(s.id);
+          return h('div','side-item',{onclick:()=>{state.stage=state.stage===s.id?null:s.id;rerender()},'aria-pressed':String(state.stage===s.id)},
+            h('span',null,s.name),h('span','meta',`${l.length} · ${fmtCNYc(l.reduce((a,c)=>a+c.cost,0))}`));}),
+        h('h4',null,'角色'),
+        h('div','chips',[null,...['story-architect','narrative-writer','consistency-checker','chapter-extractor','character-designer','story-explorer','story-researcher']].map(r=>
+          h('button','chip',{onclick:()=>{state.role=state.role===r?undefined:r;rerender()},'aria-pressed':String(state.role===r)},r||'主 agent'))),
+        h('h4',null,'模型'),
+        h('div','chips',[...modelG.keys()].map(mod=>{
+          const col=MODEL_COLORS[mod];
+          return h('button','chip',{onclick:()=>{state.model=state.model===mod?null:mod;rerender()},'aria-pressed':String(state.model===mod)},
+            h('span','legend-sw',{style:`display:inline-block;width:8px;height:8px;border-radius:2px;background:var(${col});margin-right:5px`}),mod);}))),
+      h('section',null,
+        h('div','mini-kpis',
+          miniTile('调用次数',m.n.toLocaleString('zh-CN')),
+          miniTile('总成本',fmtCNYc(m.cost)),
+          miniTile('错误率',fmtPct(m.errRate)),
+          miniTile('P50 / P95 耗时',`${fmtDur(m.durP50)} / ${fmtDur(m.durP95)}`)),
+        h('div','card',
+          h('h3',null,`调用明细（${list.length}${list.length>cap?`，显示前 ${cap}`:''}）`),
+          h('div',{style:'overflow:auto;max-height:62vh'},h('table',null,
+            h('thead',null,h('tr',null,
+              h('th',null,'时间'),h('th',null,'阶段'),h('th',null,'角色'),h('th',null,'模型'),
+              h('th',null,'目的'),h('th',{class:'num'},'用量'),h('th',{class:'num'},'耗时'),h('th',{class:'num'},'成本'),h('th',null,'状态'))),
+            h('tbody',null,list.slice(0,cap).map(c=>h('tr','click',{onclick:()=>openDetail(c)},
+              h('td',null,fmtTime(c.ts)),h('td',null,c.stage.name),h('td',null,c.role||'主 agent'),h('td',null,c.model),
+              h('td',null,PURPOSE_LABEL[c.purpose]),
+              h('td','num',c.tokensIn!=null?`${compact(c.tokensIn+c.cacheRead)}→${compact(c.tokensOut)}`:(c.units?`${c.units} ${MEDIA_MODELS[c.model].unit}`:'—')),
+              h('td','num',fmtDur(c.dur)),h('td','num',fmtCNY(c.cost)),
+              h('td',null,h('span','status-dot '+(c.error?'sd-err':c.retries?'sd-retry':'sd-ok'),{title:c.error?c.error.code:''},
+                c.error?c.error.code:(c.retries?`重试${c.retries}`:'成功')))))))),
+          h('div','note','用量列：文本为 输入→输出 tokens；媒体为生成数量。')))));
+}
+
+/* ================= 变体 C · 对比实验台 ================= */
+const TEXT_TASKS=[
+  {name:'雨夜追逐 · 第2集'},{name:'天台对峙 · 第3集'},{name:'婚礼闪回 · 第5集'},{name:'仓库打斗 · 第6集'},{name:'结局重逢 · 第12集'}];
+const TEXT_RESULTS={
+  'deepseek-chat':[[.021,4100,1180],[.027,5200,1420],[.019,3800,1090],[.032,6100,1610],[.024,4600,1300]],
+  'deepseek-reasoner':[[.112,12800,2450],[.141,15600,2900],[.098,10900,2260],[.156,17200,3180],[.121,13400,2610]],
+  'qwen3-max':[[.061,5300,1580],[.072,6400,1790],[.055,4900,1460],[.083,7100,1940],[.066,5800,1650]],
+};
+const IMG_TASKS=[{name:'雨夜小巷 · 主视觉'},{name:'天台对峙 · 关键帧'},{name:'婚礼闪回 · 暖色调'},{name:'仓库打斗 · 动作帧'}];
+const IMG_RESULTS={
+  'qwen-image-2.0':[[.25,6.2],[.25,5.8],[.25,6.9],[.25,6.4]],
+  'gpt-image-2':[[.42,11.3],[.42,10.1],[.42,13.8],[.42,12.2]],
+};
+function sbExcerpt(model,task){
+  const T=task.name.split(' · ')[0];
+  if(model==='deepseek-reasoner')return `（推演：本段情绪应从紧绷转向释然，前 2 镜保持低压构图，第 3 镜开放空间释放）\n镜头 1｜${T}｜中景：构图左强右弱，人物视线锁死画外……\n镜头 2｜同场｜特写：手部动作交代关键道具……\n镜头 3｜全景：空间打开，光影对比转暖……\n（完整输出见批次归档）`;
+  if(model==='qwen3-max')return `镜头 1｜${T}｜中景：人物入画，环境音先于视觉进场。\n镜头 2｜特写：道具细节 + 一句内心独白。\n镜头 3｜全景：收束到情绪落点，留白 1s。`;
+  return `镜头 1｜${T}｜中景\n镜头 2｜特写\n镜头 3｜全景`;
+}
+function renderC(root){
+  const tmodels=Object.keys(TEXT_RESULTS);
+  const imodels=Object.keys(IMG_RESULTS);
+  root.append(
+    h('div','filterrow',
+      h('div','tabs',
+        h('button',{onclick:()=>{state.benchTab='text';rerender()},'aria-pressed':String(state.benchTab==='text')},'文本模型对比'),
+        h('button',{onclick:()=>{state.benchTab='image';rerender()},'aria-pressed':String(state.benchTab==='image')},'图像模型对比')),
+      h('span','note',state.benchTab==='text'?'任务集：分镜描述生成 · 5 题 · 批次 B3（2026-09-13）':'任务集：封面出图 · 4 题 · 批次 B1（2026-09-14）')),
+    state.benchTab==='text'?renderCText(tmodels):renderCImage(imodels),
+    h('div','card',h('h3',null,'近期运行监控（近 30 天每日成本）'),h('div','sub','明细见变体 A / B'),
+      lineChart({labels:byDay(inWindow(30),30).map(d=>fmtDate(d.ts)),
+        series:[{name:'成本',color:'--c1',values:byDay(inWindow(30),30).map(d=>d.cost),area:true}],fmt:v=>compact(v)})));
+}
+function mtxTable(rows,cols,cell,bestFn){
+  return h('div',{style:'overflow:auto'},h('table',null,
+    h('thead',null,h('tr',null,h('th',null,'指标'),cols.map(c=>h('th',null,c)))),
+    h('tbody',null,rows.map(r=>{
+      const best=bestFn?bestFn(r):null;
+      return h('tr',null,h('td',null,r),cols.map(c=>h('td',{class:best===c?'best num':'num'},cell(r,c),best===c?h('span','best-tag','最佳'):null)));
+    }))));
+}
+function renderCText(tmodels){
+  const stat=m=>{const rs=TEXT_RESULTS[m];const costs=rs.map(r=>r[0]),lat=rs.map(r=>r[1]).sort((a,b)=>a-b),toks=rs.map(r=>r[2]);
+    return{cost:costs.reduce((a,b)=>a+b)/rs.length,p50:pct(lat,.5),p95:pct(lat,.95),tok:toks.reduce((a,b)=>a+b)/rs.length,err:0}};
+  const stats=Object.fromEntries(tmodels.map(m=>[m,stat(m)]));
+  return h('div',null,
+    h('div','card',h('h3',null,'指标矩阵 · 文本'),h('div','sub','同一任务集 × 3 模型；加粗为该指标最佳'),
+      mtxTable(['平均成本/题','P50 延迟','P95 延迟','平均输出 tokens','错误率'],tmodels,
+        (r,c)=>({['平均成本/题']:fmtCNY(stats[c].cost),['P50 延迟']:fmtDur(stats[c].p50),['P95 延迟']:fmtDur(stats[c].p95),['平均输出 tokens']:compact(stats[c].tok),['错误率']:fmtPct(stats[c].err)})[r],
+        r=>r==='平均输出 tokens'?null:tmodels.reduce((a,b)=>r.includes('延迟')?stats[a][r==='P50 延迟'?'p50':'p95']<=stats[b][r==='P50 延迟'?'p50':'p95']?a:b:r==='错误率'?a:stats[a].cost<=stats[b].cost?a:b)),
+      twinTable([{l:'模型'},{l:'平均成本/题',t:'num'},{l:'P50',t:'num'},{l:'P95',t:'num'},{l:'平均输出 tokens',t:'num'}],
+        tmodels.map(m=>[m,fmtCNY(stats[m].cost),fmtDur(stats[m].p50),fmtDur(stats[m].p95),compact(stats[m].tok)]))),
+    h('div','grid2',
+      chartCard('每题成本（¥）',null,groupedBarChart({groups:TEXT_TASKS.map(t=>t.name),
+        series:tmodels.map(m=>({name:m,color:MODEL_COLORS[m],values:TEXT_RESULTS[m].map(r=>r[0])})),fmt:v=>v.toFixed(2)}),
+        [['任务',...TEXT_TASKS.map(t=>t.name)],...tmodels.map(m=>[m,...TEXT_RESULTS[m].map(r=>fmtCNY(r[0]))])]),
+      chartCard('每题延迟（ms）',null,groupedBarChart({groups:TEXT_TASKS.map(t=>t.name),
+        series:tmodels.map(m=>({name:m,color:MODEL_COLORS[m],values:TEXT_RESULTS[m].map(r=>r[1])})),fmt:v=>compact(v)}),
+        [['任务',...TEXT_TASKS.map(t=>t.name)],...tmodels.map(m=>[m,...TEXT_RESULTS[m].map(r=>fmtDur(r[1]))])])),
+    h('div','card',h('h3',null,'输出并排对比'),h('div','sub','人工肉眼对比 · 本期不做自动评分'),
+      h('div','chips',{style:'margin-bottom:10px'},TEXT_TASKS.map((t,i)=>
+        h('button','chip',{onclick:()=>{state.benchTask=i;rerender()},'aria-pressed':String(state.benchTask===i)},t.name))),
+      h('div','out-cols',tmodels.map(m=>{
+        const r=TEXT_RESULTS[m][state.benchTask];
+        return h('div','out-card',
+          h('div','oh',h('span','sw',{style:`background:var(${MODEL_COLORS[m]})`}),m),
+          h('div','om',`${fmtCNY(r[0])} · ${fmtDur(r[1])} · 输出 ${compact(r[2])} tokens`),
+          h('pre','excerpt',sbExcerpt(m,TEXT_TASKS[state.benchTask])));}))));
+}
+function renderCImage(imodels){
+  const stat=m=>{const rs=IMG_RESULTS[m];return{cost:rs.reduce((a,b)=>a+b[0],0)/rs.length,lat:rs.reduce((a,b)=>a+b[1],0)/rs.length,err:0}};
+  const stats=Object.fromEntries(imodels.map(m=>[m,stat(m)]));
+  return h('div',null,
+    h('div','card',h('h3',null,'指标矩阵 · 图像'),h('div','sub','每题 1 张 · 1024×1536'),
+      mtxTable(['平均成本/图','平均耗时/图','错误率'],imodels,
+        (r,c)=>({['平均成本/图']:fmtCNY(stats[c].cost),['平均耗时/图']:fmtDur(stats[c].lat*1000),['错误率']:fmtPct(stats[c].err)})[r],
+        r=>r==='错误率'?null:imodels.reduce((a,b)=>r.includes('成本')?(stats[a].cost<=stats[b].cost?a:b):(stats[a].lat<=stats[b].lat?a:b))),
+      twinTable([{l:'模型'},{l:'平均成本/图',t:'num'},{l:'平均耗时/图',t:'num'}],
+        imodels.map(m=>[m,fmtCNY(stats[m].cost),fmtDur(stats[m].lat*1000)]))),
+    h('div','card',h('h3',null,'出图并排对比'),
+      h('div','chips',{style:'margin-bottom:10px'},IMG_TASKS.map((t,i)=>
+        h('button','chip',{onclick:()=>{state.imgTask=i;rerender()},'aria-pressed':String(state.imgTask===i)},t.name))),
+      h('div','out-cols',imodels.map(m=>{
+        const r=IMG_RESULTS[m][state.imgTask];const col=MODEL_COLORS[m];
+        return h('div','out-card',
+          h('div','oh',h('span','sw',{style:`background:var(${col})`}),m),
+          h('div','om',`${fmtCNY(r[0])} · ${r[1].toFixed(1)}s`),
+          h('div','img-tile',{style:`background:linear-gradient(135deg,color-mix(in srgb,var(${col}) 22%,var(--surface)),color-mix(in srgb,var(${col}) 6%,var(--surface)))`},
+            '原型占位图\n1024×1536'), // 真实面板此处显示出图
+          h('div','note','真实面板：此处渲染实际出图（文件引用 + sha256）'));}))));
+}
+
+/* ================= 变体切换 / 主题 ================= */
+const VARIANTS=[
+  {key:'A',name:'总览驾驶舱',render:renderA},
+  {key:'B',name:'下钻探索器',render:renderB},
+  {key:'C',name:'对比实验台',render:renderC},
+];
+let vkey=new URLSearchParams(location.search).get('variant')||'A';
+if(!VARIANTS.some(v=>v.key===vkey))vkey='A';
+function rerender(){
+  const app=$('#app');app.replaceChildren();
+  const v=VARIANTS.find(v=>v.key===vkey);
+  v.render(app);
+  $('#vlabel').textContent=`${v.key} — ${v.name}`;
+  $('#range-note').textContent=`${state.days} 天窗口 · mock 数据`;
+  hideTip();
+}
+function setVariant(k){vkey=k;const u=new URL(location.href);u.searchParams.set('variant',k);history.replaceState(null,'',u);rerender()}
+$('#prev').addEventListener('click',()=>{const i=VARIANTS.findIndex(v=>v.key===vkey);setVariant(VARIANTS[(i-1+VARIANTS.length)%VARIANTS.length].key)});
+$('#next').addEventListener('click',()=>{const i=VARIANTS.findIndex(v=>v.key===vkey);setVariant(VARIANTS[(i+1)%VARIANTS.length].key)});
+document.addEventListener('keydown',e=>{
+  const t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable))return;
+  if(e.key==='ArrowLeft')$('#prev').click();
+  if(e.key==='ArrowRight')$('#next').click();
+});
+$('#theme-toggle').addEventListener('click',()=>{
+  const root=document.documentElement;
+  const cur=root.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+  root.dataset.theme=cur==='dark'?'light':'dark';
+});
+rerender();
+</script>
+</body>
+</html>

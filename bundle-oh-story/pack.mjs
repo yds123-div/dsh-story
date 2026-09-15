@@ -36,7 +36,13 @@ await build({
 
 // Client bundle from the UI package's build output.
 const uiDir = await packageDir("@oh-story/ui")
-await cp(resolve(uiDir, "lib/client.js"), resolve(stage, "lib/client.js"))
+// The prebuilt client registers itself as "@oh-story/ui", but the self-contained
+// tarball is loaded under the aggregator name "@oh-story/dsh" — without this
+// rewrite the browser rejects it ("loaded without registering").
+const clientJs = await readFile(resolve(uiDir, "lib/client.js"), "utf8")
+const clientPatched = clientJs.replace('"@oh-story/ui"', '"@oh-story/dsh"')
+if (clientPatched === clientJs) throw new Error('client.js: registration string "@oh-story/ui" not found')
+await writeFile(resolve(stage, "lib/client.js"), clientPatched)
 await cp(resolve(uiDir, "lib/client.js.map"), resolve(stage, "lib/client.js.map"))
 
 // Knowledge assets at the paths the bundled resolvers expect.

@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>场记 · oh-story 监控看板（原型）</title>
+<!--
+  原型问题：oh-story 监控看板长什么样？
+  三个结构不同的变体，?variant=A|B|C 切换（浮条 ◀▶ 或方向键循环）：
+    A — 运营总览   KPI 行 + 图表网格（Token/模型/流量/turn 结局）
+    B — 创作者视图 左侧创作者排行脊柱 + 右侧单人详情
+    C — 事件监控台 密集时间线流水 + 状态计量行
+  数据：真实（monitor JSONL + Umami，build-dashboard.mjs 内联）或模拟（预览密度）。
+  throwaway — 验证后只保留胜出方向，其余归档。
+-->
+<script src="./echarts.min.js"></script>
+<style>
+  :root {
+    --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --hair:rgba(11,11,11,.10);
+    --slate:#0d366b; --accent:#2a78d6; --track:#cde2fb;
+    --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  }
+  html[data-theme="dark"] {
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --hair:rgba(255,255,255,.10);
+    --slate:#0a2a54; --accent:#3987e5; --track:#0d366b;
+    --good:#0ca30c; --crit:#d03b3b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px;
+  }
+
+  /* ---- 场记板页头（本页唯一放胆处） ---- */
+  .slate {
+    display: flex; align-items: stretch; background: var(--slate); color: #fff;
+  }
+  .clapper {
+    width: 88px; flex: none; border-right: 3px solid var(--slate);
+    background: repeating-linear-gradient(-45deg, transparent 0 12px, rgba(255,255,255,.92) 12px 24px);
+  }
+  .slate-main { flex: 1; padding: 18px 24px; min-width: 0; }
+  .slate h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: .02em; }
+  .slate .sub { margin: 2px 0 0; font-size: 12.5px; color: rgba(255,255,255,.78); }
+  .slate-side { display: flex; align-items: center; gap: 10px; padding: 0 24px; }
+  .tag-proto {
+    font-size: 11px; padding: 3px 8px; border: 1px solid rgba(255,255,255,.45);
+    border-radius: 999px; color: rgba(255,255,255,.9);
+  }
+  .theme-btn {
+    font-size: 12.5px; color: #fff; border: 1px solid rgba(255,255,255,.4);
+    border-radius: 999px; padding: 4px 12px;
+  }
+  .theme-btn:hover { background: rgba(255,255,255,.12); }
+
+  /* ---- 过滤行（一行，位于图表之上，作用于其下全部） ---- */
+  .filters {
+    max-width: 1280px; margin: 16px auto 0; padding: 0 24px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .seg { display: flex; border: 1px solid var(--hair); border-radius: 6px; overflow: hidden; background: var(--surface); }
+  .seg button { padding: 5px 14px; font-size: 13px; color: var(--ink2); }
+  .seg button + button { border-left: 1px solid var(--hair); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--page); font-weight: 600; }
+  .scope-info { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  main { max-width: 1280px; margin: 0 auto; padding: 16px 24px 96px; }
+
+  /* ---- 卡片：面 + 发丝线，不用投影 ---- */
+  .card {
+    background: var(--surface); border: 1px solid var(--hair); border-radius: 4px;
+    padding: 16px 18px 12px; min-width: 0;
+  }
+  .card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .card-head h2 { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .card-head .sub { font-size: 12px; color: var(--muted); }
+  .tbl-btn {
+    margin-left: auto; font-size: 12px; color: var(--muted);
+    border: 1px solid var(--hair); border-radius: 4px; padding: 1px 8px;
+  }
+  .tbl-btn:hover { color: var(--ink2); border-color: var(--axis); }
+  .chart-box { height: 240px; width: 100%; }
+  .chart-box.tall { height: 300px; }
+  table.twin { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.twin th {
+    text-align: left; font-weight: 600; color: var(--ink2); padding: 4px 8px;
+    border-bottom: 1px solid var(--grid);
+  }
+  table.twin td { padding: 3.5px 8px; border-bottom: 1px solid var(--grid); color: var(--ink2); }
+  table.twin td.num, table.twin th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---- KPI ---- */
+  .kpi-row { display: grid; grid-template-columns: 1.6fr repeat(6, 1fr); gap: 14px; margin-bottom: 16px; }
+  .tile { background: var(--surface); border: 1px solid var(--hair); border-radius: 4px; padding: 12px 16px; }
+  .tile .label { font-size: 12px; color: var(--muted); }
+  .tile .value { font-size: 22px; font-weight: 600; color: var(--ink); margin-top: 2px; }
+  .tile.hero { padding: 12px 20px; }
+  .tile.hero .value { font-size: 46px; line-height: 1.1; font-weight: 650; }
+  .tile .detail { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .tile.hero .detail { font-size: 12px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .grid-2:last-child, .grid-3:last-child { margin-bottom: 0; }
+  @media (max-width: 980px) {
+    .grid-2, .grid-3, .kpi-row { grid-template-columns: 1fr 1fr; }
+    .tile.hero { grid-column: 1 / -1; }
+  }
+  @media (max-width: 620px) { .grid-2, .grid-3, .kpi-row { grid-template-columns: 1fr; } .clapper { width: 48px; } }
+
+  /* ---- 计量条 ---- */
+  .meter { height: 8px; border-radius: 4px; background: var(--track); margin-top: 8px; overflow: hidden; }
+  .meter-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+  .meter-fill.warn { background: var(--warn); }
+  .meter-fill.crit { background: var(--crit); }
+  .meter-row { display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+  .meter-row .v { font-size: 20px; font-weight: 600; }
+  .meter-row .l { font-size: 12px; color: var(--muted); }
+
+  /* ---- 状态（图标 + 文字，绝不裸色） ---- */
+  .st { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; }
+  .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .st.good::before { background: var(--good); }
+  .st.bad::before { background: var(--crit); }
+  .st.mid::before { background: var(--serious); }
+  .st-list { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 4px; }
+  .st-row { display: flex; align-items: center; gap: 10px; }
+  .st-row .bar { flex: 1; height: 14px; display: flex; gap: 2px; }
+  .st-row .bar i { border-radius: 2px; min-width: 2px; }
+  .st-row .n { font-variant-numeric: tabular-nums; color: var(--ink2); width: 4em; text-align: right; font-size: 12.5px; }
+
+  /* ---- 创作者视图（B） ---- */
+  .b-layout { display: grid; grid-template-columns: 380px 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 980px) { .b-layout { grid-template-columns: 1fr; } }
+  .creator-row {
+    display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .creator-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+  .creator-row[aria-pressed="true"] { border-color: var(--hair); background: var(--page); }
+  .cr-top { display: flex; align-items: baseline; gap: 8px; }
+  .cr-id { font-weight: 600; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .cr-tokens { margin-left: auto; font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+  .cr-bar { height: 6px; background: var(--track); border-radius: 3px; margin: 7px 0 5px; }
+  .cr-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  .cr-meta { font-size: 11.5px; color: var(--muted); display: flex; gap: 12px; }
+
+  /* ---- 事件监控台（C） ---- */
+  .timeline { max-height: 520px; overflow: auto; }
+  table.tl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tl th {
+    position: sticky; top: 0; background: var(--surface); text-align: left; font-weight: 600;
+    color: var(--ink2); padding: 6px 8px; border-bottom: 1px solid var(--axis); font-size: 12px;
+  }
+  table.tl td { padding: 4px 8px; border-bottom: 1px solid var(--grid); color: var(--ink2); white-space: nowrap; }
+  table.tl td.ts { font-variant-numeric: tabular-nums; color: var(--muted); }
+  table.tl tr.fail td { color: var(--ink); }
+  .src-badge {
+    font-size: 10.5px; border: 1px solid var(--hair); border-radius: 3px; padding: 0 5px;
+    color: var(--muted); white-space: nowrap;
+  }
+  .meters-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 980px) { .meters-row { grid-template-columns: 1fr; } }
+
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+  .empty b { display: block; color: var(--ink2); font-size: 14px; margin-bottom: 4px; }
+  .note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  .placeholder-body { padding: 20px 6px 10px; color: var(--muted); font-size: 13px; }
+  .placeholder-body .cnt { font-size: 20px; font-weight: 600; color: var(--ink2); }
+
+  /* ---- 原型切换浮条（明显不属于被评审的设计） ---- */
+  .proto-switcher {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 2px; z-index: 99;
+    background: #111; color: #fff; border-radius: 999px; padding: 4px 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.35); font-size: 13px;
+  }
+  .proto-switcher button { color: #fff; padding: 4px 10px; border-radius: 999px; }
+  .proto-switcher button:hover { background: rgba(255,255,255,.18); }
+  .proto-switcher .vlabel { padding: 0 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<header class="slate">
+  <div class="clapper" aria-hidden="true"></div>
+  <div class="slate-main">
+    <h1>场记 · oh-story 监控看板</h1>
+    <p class="sub">采集层 v1 原型 — 自建 JSONL（token / 行为）与 Umami（流量 / 前端事件）按 creator 对齐</p>
+  </div>
+  <div class="slate-side">
+    <span class="tag-proto">PROTOTYPE · throwaway</span>
+    <button class="theme-btn" id="themeBtn" type="button">◐ 明暗</button>
+  </div>
+</header>
+
+<div class="filters">
+  <div class="seg" id="srcSeg" role="group" aria-label="数据源">
+    <button type="button" data-src="real">真实数据</button>
+    <button type="button" data-src="demo">模拟数据</button>
+  </div>
+  <div class="seg" id="rangeSeg" role="group" aria-label="时间范围">
+    <button type="button" data-range="all">全部</button>
+    <button type="button" data-range="7">近 7 天</button>
+    <button type="button" data-range="1">今天</button>
+  </div>
+  <span class="scope-info" id="scopeInfo"></span>
+</div>
+
+<main id="view"></main>
+
+<div class="proto-switcher" id="switcher">
+  <button id="prevBtn" type="button" aria-label="上一个变体">◀</button>
+  <span class="vlabel" id="variantLabel"></span>
+  <button id="nextBtn" type="button" aria-label="下一个变体">▶</button>
+</div>
+
+<script>
+window.__DATA__ = {"generatedAt":"2026-09-17T02:17:58.130Z","sources":{"jsonl":["D:/Shenlan/ohstory-chain-test/monitor-proto/monitor-prototype.jsonl","C:/Users/18307/.dsh/monitor-prototype/monitor-prototype.jsonl"],"umami":"http://127.0.0.1:3000 (2d2df428-1c24-41b9-a6d7-ba83b98be3ed)"},"records":[{"kind":"session_created","ts":1789566135139,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3"},{"kind":"llm_call","ts":1789566136723,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","provider":"qianwen30b","model":"qwen3-30b-2507","purpose":"session-title","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3","latencyMs":1486,"usage":{"inputTokens":130,"outputTokens":5,"totalTokens":135},"finish":{"kind":"stop"}},{"kind":"llm_call","ts":1789566138291,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","provider":"qianwen30b","model":"qwen3-30b-2507","purpose":"behavior","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3","latencyMs":3055,"usage":{"inputTokens":12498,"outputTokens":2,"totalTokens":12500},"finish":{"kind":"stop"}},{"kind":"assistant_message","ts":1789566138294,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3","turn":1,"step":1,"usage":{"inputTokens":12498,"outputTokens":2,"totalTokens":12500},"model":{"kind":"model","provider":"qianwen30b","model":"qwen3-30b-2507","replayState":{"response":{"kind":"pi-ai","version":2,"api":"anthropic-messages","provider":"qianwen30b","model":"qwen3-30b-2507","responseId":"chatcmpl-971afc50142c8335","stopReason":"stop"},"blocks":[{"type":"text"}]}},"interrupted":false},{"kind":"turn_end","ts":1789566138296,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3","turn":1,"reason":{"kind":"completed"}},{"kind":"session_created","ts":1789566523131,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-6e751b0c-d8a9-4094-bb40-92ca4751799b"},{"kind":"session_created","ts":1789566674497,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-1512d131-fdb7-4d02-bd3d-ab94bfbe53fe"},{"kind":"session_created","ts":1789566812836,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-816e45fb-2824-4e4c-a399-c09ef9e9212d"}],"umami":{"websiteId":"2d2df428-1c24-41b9-a6d7-ba83b98be3ed","url":"http://127.0.0.1:3000","stats":{"pageviews":4,"visitors":3,"visits":3,"bounces":1,"totaltime":2152,"comparison":{"pageviews":0,"visitors":0,"visits":0,"bounces":0,"totaltime":0}},"daily":[{"x":"2026-09-16","pageviews":4,"sessions":3}],"events":[{"ts":1789566673883,"name":"pageview","eventType":1,"url":"/","device":"laptop","browser":"chrome","os":"Windows 10","title":"DSH Local Build"},{"ts":1789566522140,"name":"pageview","eventType":1,"url":"/","device":"laptop","browser":"edge-chromium","os":"Windows 10","title":"DSH 本地构建"},{"ts":1789564521019,"name":"media_job_confirmed","eventType":2,"url":"/D:/Shenlan/dsh-story/docs/prototypes/oh-story-monitoring-v1/umami/track-test.html","device":"laptop","browser":"chrome","os":"Windows 10","title":"PROTOTYPE — Umami track() 直报测试页"},{"ts":1789564521018,"name":"session_created","eventType":2,"url":"/D:/Shenlan/dsh-story/docs/prototypes/oh-story-monitoring-v1/umami/track-test.html","device":"laptop","browser":"chrome","os":"Windows 10","title":"PROTOTYPE — Umami track() 直报测试页"},{"ts":1789564521017,"name":"pageview","eventType":1,"url":"/D:/Shenlan/dsh-story/docs/prototypes/oh-story-monitoring-v1/umami/track-test.html","device":"laptop","browser":"chrome","os":"Windows 10","title":"PROTOTYPE — Umami track() 直报测试页"},{"ts":1789564159937,"name":"pageview","eventType":1,"url":"/","device":"laptop","browser":null,"os":"Windows 10","title":"workbench"},{"ts":1789564159830,"name":"session_created","eventType":2,"url":"/workbench","device":"laptop","browser":null,"os":"Windows 10","title":"track-test"}]}};
+
+/* ================= 状态 ================= */
+const VARIANTS = [
+  { key: 'A', name: '运营总览' },
+  { key: 'B', name: '创作者视图' },
+  { key: 'C', name: '事件监控台' },
+];
+const params = new URLSearchParams(location.search);
+const state = {
+  variant: params.get('variant') || 'A',
+  src: params.get('src') === 'demo' ? 'demo' : 'real',
+  range: ['all','7','1'].includes(params.get('range')) ? params.get('range') : 'all',
+  creator: null,
+  theme: params.get('theme') === 'dark' ? 'dark'
+       : params.get('theme') === 'light' ? 'light'
+       : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+};
+
+/* ================= 调色板（dataviz 参考实例，验证器已过：亮 9.1 / 暗 8.4 CVD ΔE） ================= */
+const SERIES = {
+  light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'],
+  dark:  ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'],
+};
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const T = () => ({
+  surface: cssVar('--surface'), ink: cssVar('--ink'), ink2: cssVar('--ink2'),
+  muted: cssVar('--muted'), grid: cssVar('--grid'), axis: cssVar('--axis'),
+  good: cssVar('--good'), crit: cssVar('--crit'), warn: cssVar('--warn'), serious: cssVar('--serious'),
+  series: SERIES[state.theme],
+});
+
+/* ================= 模拟数据（确定性种子，只为了预览看板密度） ================= */
+const localDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function genDemo(){
+  const rnd = mulberry32(20260917);
+  const pick = a => a[Math.floor(rnd()*a.length)];
+  const ri = (a,b) => a + Math.floor(rnd()*(b-a+1));
+  const uid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = rnd()*16|0; return (c==='x' ? r : (r&3|8)).toString(16);
+  });
+  const today = new Date(); today.setHours(0,0,0,0);
+  const DAYS = 14;
+  const models = [
+    { provider:'qianwen30b', model:'qwen3-30b-2507' },
+    { provider:'deepseek', model:'deepseek-v3-2508' },
+  ];
+  const creators = Array.from({length:6}, uid);
+  const act = [0.28, 0.45, 0.6, 0.75, 0.55, 0.85];
+  const records = [], umamiEvents = [], daily = [];
+  for (let d = DAYS-1; d >= 0; d--) {
+    const dayStart = today.getTime() - d*864e5;
+    let pv = 0, sess = 0;
+    creators.forEach((cid, ci) => {
+      if (rnd() > act[ci]) return;
+      const nSess = ri(1,3);
+      for (let s = 0; s < nSess; s++) {
+        const sid = 'session-' + uid();
+        const start = dayStart + ri(9,22)*3600e3 + ri(0,59)*60e3;
+        const dev = pick(['laptop','desktop','mobile']);
+        const brw = pick(['chrome','edge-chromium','safari']);
+        records.push({ kind:'session_created', ts:start, creator:cid, sessionId:sid });
+        umamiEvents.push({ ts:start, name:'session_created', creator:cid, device:dev, browser:brw, url:'/workbench' });
+        const m0 = pick(models);
+        records.push({ kind:'llm_call', ts:start+ri(300,1500), creator:cid, provider:m0.provider, model:m0.model,
+          purpose:'session-title', sessionId:sid, latencyMs:ri(600,2200),
+          usage:{ inputTokens:ri(90,220), outputTokens:ri(3,14) }, finish:{kind:'stop'} });
+        if (rnd() < 0.3) umamiEvents.push({ ts:start+ri(2e3,90e3), name:'media_job_confirmed', creator:cid,
+          jobKind:pick(['image','video','composition']), device:dev, browser:brw, url:'/workbench' });
+        const turns = ri(1,8);
+        for (let t = 1; t <= turns; t++) {
+          const turnTs = start + t*ri(25e3,130e3);
+          const m = pick(models);
+          const inp = ri(3000,28000), out = ri(150,2500);
+          const usage = { inputTokens:inp, outputTokens:out };
+          if (rnd() < 0.35) usage.cacheReadTokens = ri(800,8000);
+          if (rnd() < 0.12) usage.cacheWriteTokens = ri(200,2000);
+          if (rnd() < 0.4)  usage.reasoningTokens = ri(0,1200);
+          records.push({ kind:'llm_call', ts:turnTs, creator:cid, provider:m.provider, model:m.model,
+            purpose:'behavior', sessionId:sid, latencyMs:ri(900,14000), usage, finish:{kind:'stop'} });
+          if (rnd() < 0.15) records.push({ kind:'llm_call', ts:turnTs+ri(500,2500), creator:cid, provider:m.provider, model:m.model,
+            purpose:'compaction', sessionId:sid, latencyMs:ri(800,3200),
+            usage:{ inputTokens:ri(6000,14000), outputTokens:ri(400,1600) }, finish:{kind:'stop'} });
+          const r = rnd();
+          const reason = r < 0.91 ? { kind:'completed' }
+            : r < 0.97 ? { kind:'llm-failure', code:'502', message:'upstream unavailable' }
+            : { kind:'interrupted' };
+          records.push({ kind:'turn_end', ts:turnTs+ri(1000,15000), creator:cid, sessionId:sid, turn:t, reason });
+        }
+      }
+      pv += ri(1,5); sess += nSess;
+    });
+    daily.push({ x: localDate(new Date(dayStart)), pageviews: pv+ri(2,9), sessions: sess });
+  }
+  return {
+    generatedAt: new Date().toISOString(),
+    records: records.sort((a,b)=>a.ts-b.ts),
+    umami: {
+      websiteId: 'demo', stats: {
+        pageviews: daily.reduce((a,b)=>a+b.pageviews,0), visitors: 6,
+        visits: daily.reduce((a,b)=>a+b.sessions,0), bounces: 9, totaltime: 61200,
+      },
+      daily, events: umamiEvents.sort((a,b)=>a.ts-b.ts),
+    },
+  };
+}
+const DEMO = genDemo();
+const dataset = () => state.src === 'demo' ? DEMO : window.__DATA__;
+
+/* ================= 工具 ================= */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtK = n => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+const fmtMs = n => n == null ? '—' : n >= 1000 ? (n/1000).toFixed(1)+'s' : Math.round(n)+'ms';
+const fmtTs = ts => new Date(ts).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+const dkey = ts => { const d = new Date(ts); return (d.getMonth()+1)+'/'+d.getDate(); };
+const dayLabel = isoDate => Number(isoDate.slice(5,7))+'/'+Number(isoDate.slice(8,10)); // '2026-09-16' → '9/16'
+const shortId = id => (id||'').slice(0,8);
+const $ = (sel, el=document) => el.querySelector(sel);
+
+/* ================= 聚合（过滤行作用于此层：所有卡片共用同一份切片） ================= */
+function agg(opt = {}) {
+  const { creator = null } = opt;
+  const ds = dataset();
+  const from = state.range === 'all' ? -Infinity
+    : state.range === '1' ? new Date().setHours(0,0,0,0)   // 「今天」= 本地日历日
+    : Date.now() - 7*864e5;
+  const recs = ds.records.filter(r => r.ts >= from && (!creator || r.creator === creator));
+  const llm = recs.filter(r => r.kind === 'llm_call');
+  const sess = recs.filter(r => r.kind === 'session_created');
+  const turns = recs.filter(r => r.kind === 'turn_end');
+  const events = (ds.umami?.events || []).filter(e => e.ts >= from && (!creator || e.creator === creator));
+  const daily = (ds.umami?.daily || []).filter(d => Date.parse(d.x + 'T23:59:59') >= from);
+
+  // 连续日桶（覆盖记录跨度）
+  let days = [], byDay = {};
+  if (recs.length) {
+    let t0 = Math.min(...recs.map(r=>r.ts)), t1 = Math.max(...recs.map(r=>r.ts));
+    const d0 = new Date(t0); d0.setHours(0,0,0,0);
+    for (let t = d0.getTime(); t <= t1; t += 864e5) {
+      const k = dkey(t);
+      days.push(k); byDay[k] = { beh:0, sys:0, in:0, out:0, cr:0, cw:0, rs:0, calls:0, lat:0 };
+    }
+  }
+  for (const r of llm) {
+    const b = byDay[dkey(r.ts)]; if (!b) continue;
+    const u = r.usage || {};
+    const tot = (u.inputTokens||0)+(u.outputTokens||0)+(u.cacheReadTokens||0)+(u.cacheWriteTokens||0)+(u.reasoningTokens||0);
+    if (r.purpose === 'behavior') b.beh += tot; else b.sys += tot;
+    b.in += u.inputTokens||0; b.out += u.outputTokens||0; b.cr += u.cacheReadTokens||0;
+    b.cw += u.cacheWriteTokens||0; b.rs += u.reasoningTokens||0;
+    b.calls++; b.lat += r.latencyMs||0;
+  }
+  const tokensOf = r => { const u = r.usage||{};
+    return (u.inputTokens||0)+(u.outputTokens||0)+(u.cacheReadTokens||0)+(u.cacheWriteTokens||0)+(u.reasoningTokens||0); };
+  const tokensTotal = llm.reduce((a,r)=>a+tokensOf(r),0);
+  const tokensBeh = llm.filter(r=>r.purpose==='behavior').reduce((a,r)=>a+tokensOf(r),0);
+  const tokensSys = tokensTotal - tokensBeh;
+
+  // 模型
+  const byModel = new Map();
+  for (const r of llm) {
+    const k = r.model + ' · ' + r.provider;
+    if (!byModel.has(k)) byModel.set(k, { model:r.model, provider:r.provider, calls:0, tokens:0, lat:0 });
+    const m = byModel.get(k);
+    m.calls++; m.tokens += tokensOf(r); m.lat += r.latencyMs||0;
+  }
+
+  // 创作者
+  const byCreator = new Map();
+  for (const r of recs) {
+    if (!r.creator) continue;
+    if (!byCreator.has(r.creator)) byCreator.set(r.creator, { id:r.creator, tokens:0, calls:0, sessions:new Set(), turns:0, fails:0, last:0 });
+    const c = byCreator.get(r.creator);
+    c.last = Math.max(c.last, r.ts);
+    if (r.kind === 'session_created') c.sessions.add(r.sessionId);
+    if (r.kind === 'llm_call') { c.calls++; c.tokens += tokensOf(r); }
+    if (r.kind === 'turn_end') { c.turns++; if (r.reason && r.reason.kind !== 'completed') c.fails++; }
+  }
+
+  // turn 结局
+  const outcome = { completed:0, 'llm-failure':0, interrupted:0, other:0 };
+  for (const t of turns) outcome[t.reason?.kind || 'other'] = (outcome[t.reason?.kind || 'other']||0) + 1;
+  const turnRate = turns.length ? outcome.completed/turns.length : null;
+
+  // 时间线（自建 + Umami 合并，倒序）
+  const timeline = [
+    ...recs.map(r => ({ ts:r.ts, src:'自建', creator:r.creator, sessionId:r.sessionId, kind:r.kind, rec:r })),
+    ...events.map(e => ({ ts:e.ts, src:'Umami', creator:e.creator, kind:'umami-event', ev:e })),
+  ].sort((a,b) => b.ts - a.ts);
+
+  const pv = daily.reduce((a,d)=>a+d.pageviews,0);
+  const visits = daily.reduce((a,d)=>a+d.sessions,0);
+
+  return {
+    ds, recs, llm, sess, turns, events, daily, days, byDay, byModel, byCreator, outcome, turnRate, timeline,
+    tokensTotal, tokensBeh, tokensSys, pv, visits,
+    creators: [...byCreator.values()].sort((a,b)=>b.tokens-a.tokens),
+    mediaEvents: events.filter(e=>e.name==='media_job_confirmed'),
+    latencyAvg: llm.length ? llm.reduce((a,r)=>a+(r.latencyMs||0),0)/llm.length : null,
+  };
+}
+
+/* ================= ECharts 封装 ================= */
+let charts = [];
+function mkChart(el, option) {
+  const c = echarts.init(el); c.setOption(option); charts.push(c); return c;
+}
+function disposeCharts(){ charts.forEach(c=>c.dispose()); charts = []; }
+addEventListener('resize', () => charts.forEach(c=>c.resize()));
+
+function ttFormatter(params, fmt) {
+  if (typeof fmt !== 'function') fmt = fmtK; // ECharts 第二参是 ticket 字符串
+  const ps = params.filter(p => p.value != null && p.value !== '-');
+  if (!ps.length) return '';
+  const rows = ps.map(p =>
+    `<div class="tt-row" style="display:flex;align-items:center;gap:6px;margin-top:2px">
+       <b style="min-width:3.5em;text-align:right">${esc(fmt(p.value))}</b>
+       <span style="width:10px;height:3px;border-radius:2px;background:${p.color};display:inline-block"></span>
+       <span style="color:${T().ink2}">${esc(p.seriesName)}</span>
+     </div>`).join('');
+  return `<div style="font-size:12px;color:${T().muted};margin-bottom:2px">${esc(ps[0].axisValue)}</div>${rows}`;
+}
+const gridOpt = () => ({ left: 6, right: 14, top: 34, bottom: 4, containLabel: true });
+const catAxis = data => ({ type:'category', data, axisLine:{ lineStyle:{ color:T().axis } }, axisTick:{ show:false },
+  axisLabel:{ color:T().muted, fontSize:11 } });
+const valAxis = (unit='') => ({ type:'value', splitLine:{ lineStyle:{ color:T().grid, width:1 } },
+  axisLabel:{ color:T().muted, fontSize:11, formatter: v => fmtK(v) + unit } });
+const tooltipOpt = () => ({ trigger:'axis', axisPointer:{ type:'line', lineStyle:{ color:T().axis } },
+  backgroundColor:T().surface, borderColor:T().grid, borderWidth:1, padding:[8,12],
+  textStyle:{ color:T().ink, fontSize:12 } });
+const legendOpt = names => ({ top: 0, right: 0, itemWidth: 14, itemHeight: 8, itemGap: 14,
+  textStyle:{ color:T().ink2, fontSize:11 } });
+
+function barStack(el, days, series) { // series: [{name, data, color?}]
+  const t = T();
+  chart_colors(series);
+  mkChart(el, {
+    grid: gridOpt(), tooltip: { ...tooltipOpt(), formatter: ttFormatter },
+    legend: legendOpt(series.map(s=>s.name)),
+    xAxis: catAxis(days), yAxis: valAxis(),
+    series: series.map((s,i) => ({
+      name:s.name, type:'bar', stack:'t', barMaxWidth: 22,
+      itemStyle: { color:s.color, borderColor:t.surface, borderWidth:1,
+        borderRadius: i === series.length-1 ? [4,4,0,0] : 0 },
+      data: s.data,
+    })),
+  });
+}
+function barSingle(el, cats, values, { color, fmt = fmtK, unit = '' } = {}) {
+  const t = T();
+  mkChart(el, {
+    grid: gridOpt(), tooltip: { ...tooltipOpt(), formatter: p => ttFormatter(p, fmt) },
+    xAxis: catAxis(cats), yAxis: valAxis(unit),
+    series: [{ type:'bar', barMaxWidth: 22,
+      itemStyle: { color, borderRadius:[4,4,0,0] },
+      label: { show:true, position:'top', color:t.ink2, fontSize:11, formatter: p => fmt(p.value) },
+      data: values }],
+  });
+}
+function lineChart(el, days, series) { // series: [{name, data, color}]
+  const t = T();
+  mkChart(el, {
+    grid: gridOpt(), tooltip: { ...tooltipOpt(), formatter: ttFormatter },
+    legend: legendOpt(series.map(s=>s.name)),
+    xAxis: catAxis(days), yAxis: valAxis(),
+    series: series.map(s => ({
+      name:s.name, type:'line', data:s.data,
+      lineStyle:{ width:2, cap:'round', join:'round' },
+      symbol:'circle', symbolSize:8,
+      itemStyle:{ color:s.color, borderColor:t.surface, borderWidth:2 },
+      emphasis:{ focus:'series' },
+    })),
+  });
+}
+// 五桶等固定身份 → 固定槽位；其余按传入顺序取槽
+function chart_colors(series){
+  const t = T();
+  series.forEach((s,i) => { if (!s.color) s.color = t.series[i % t.series.length]; });
+}
+
+/* ================= 卡片 ================= */
+function card({ title, sub, table, tall = false, bodyHTML = '', cls = '' }) {
+  const el = document.createElement('section');
+  el.className = 'card ' + cls;
+  el.innerHTML = `
+    <div class="card-head">
+      <h2>${esc(title)}</h2>${sub ? `<span class="sub">${esc(sub)}</span>` : ''}
+      ${table ? '<button type="button" class="tbl-btn">表格</button>' : ''}
+    </div>
+    <div class="card-body">${bodyHTML}</div>`;
+  if (table) {
+    const body = $('.card-body', el);
+    $('.tbl-btn', el).addEventListener('click', ev => {
+      const btn = ev.currentTarget;
+      const existing = $('.twin-wrap', el);
+      if (existing) { existing.remove(); btn.textContent = '表格'; return; }
+      const wrap = document.createElement('div');
+      wrap.className = 'twin-wrap';
+      const rows = table().rows.map(r => `<tr>${r.map((c,i) => `<td${table().nums && table().nums[i] ? ' class="num"' : ''}>${c}</td>`).join('')}</tr>`).join('');
+      wrap.innerHTML = `<table class="twin">
+        <thead><tr>${table().headers.map((h,i) => `<th${table().nums && table().nums[i] ? ' class="num"' : ''}>${esc(h)}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody></table>`;
+      body.appendChild(wrap);
+      btn.textContent = '图表';
+    });
+  }
+  return el;
+}
+function tile(label, valueHTML, detailHTML = '') {
+  const el = document.createElement('div');
+  el.className = 'tile';
+  el.innerHTML = `<div class="label">${esc(label)}</div><div class="value">${valueHTML}</div>${detailHTML ? `<div class="detail">${detailHTML}</div>` : ''}`;
+  return el;
+}
+function meterHTML(rate, label) {
+  const pct = rate == null ? 0 : Math.round(rate*100);
+  const cls = rate == null ? '' : rate >= 0.9 ? '' : rate >= 0.7 ? 'warn' : 'crit';
+  return `<div class="meter-row"><span class="v">${rate == null ? '—' : pct + '%'}</span><span class="l">${esc(label)}</span></div>
+    <div class="meter"><div class="meter-fill ${cls}" style="width:${pct}%"></div></div>`;
+}
+function emptyBox(title, hint) {
+  return `<div class="empty"><b>${esc(title)}</b>${esc(hint)}</div>`;
+}
+
+/* ================= 变体 A — 运营总览 ================= */
+function renderA(a, view) {
+  const kpis = document.createElement('section');
+  kpis.className = 'kpi-row';
+  kpis.appendChild(tile('Token 合计', fmtK(a.tokensTotal),
+    `行为 ${fmtK(a.tokensBeh)} · 系统开销（C3）${fmtK(a.tokensSys)}`));
+  kpis.appendChild(tile('AI 调用', fmtK(a.llm.length), `平均延迟 ${fmtMs(a.latencyAvg)}`));
+  kpis.appendChild(tile('会话', fmtK(a.sess.length)));
+  kpis.appendChild(tile('创作者', fmtK(a.creators.length)));
+  kpis.appendChild(tile('Turn 成功率', meterHTML(a.turnRate, `完成 ${a.outcome.completed}/${a.turns.length}`)));
+  kpis.appendChild(tile('页面浏览（PV）', fmtK(a.pv)));
+  kpis.appendChild(tile('访问', fmtK(a.visits), a.ds.umami ? 'Umami 近 30 天' : ''));
+  view.appendChild(kpis);
+
+  if (!a.recs.length) {
+    const c = card({ title:'暂无数据', cls:'grid-2-span' });
+    c.querySelector('.card-body').innerHTML = emptyBox('该时间范围内没有记录', '换个时间范围，或切到「模拟数据」预览看板密度。');
+    view.appendChild(c); return;
+  }
+
+  const g1 = document.createElement('div'); g1.className = 'grid-2';
+  g1.appendChild(card({
+    title:'Token 消耗按天', sub:'行为 vs 系统开销（C3）',
+    bodyHTML:'<div class="chart-box" data-chart="token-day"></div>',
+    table: () => ({ headers:['日期','行为','系统开销 C3'], nums:[false,true,true],
+      rows: a.days.map(d => [d, fmtK(a.byDay[d].beh), fmtK(a.byDay[d].sys)]) }),
+  }));
+  g1.appendChild(card({
+    title:'五桶构成按天', sub:'互斥口径：输入 / 输出 / 缓存读 / 缓存写 / 推理',
+    bodyHTML:'<div class="chart-box" data-chart="buckets"></div>',
+    table: () => ({ headers:['日期','输入','输出','缓存读','缓存写','推理'], nums:[false,true,true,true,true,true],
+      rows: a.days.map(d => { const b = a.byDay[d]; return [d, fmtK(b.in), fmtK(b.out), fmtK(b.cr), fmtK(b.cw), fmtK(b.rs)]; }) }),
+  }));
+  view.appendChild(g1);
+
+  const models = [...a.byModel.values()].sort((x,y)=>y.calls-x.calls);
+  const g2 = document.createElement('div'); g2.className = 'grid-3';
+  g2.appendChild(card({
+    title:'模型 × 调用次数', sub:'名义类别，单色',
+    bodyHTML:'<div class="chart-box" data-chart="model-calls"></div>',
+    table: () => ({ headers:['模型','调用','Token'], nums:[false,true,true],
+      rows: models.map(m => [m.model, m.calls, fmtK(m.tokens)]) }),
+  }));
+  g2.appendChild(card({
+    title:'模型 × 平均延迟', sub:'每次调用',
+    bodyHTML:'<div class="chart-box" data-chart="model-lat"></div>',
+    table: () => ({ headers:['模型','平均延迟'], nums:[false,true],
+      rows: models.map(m => [m.model, fmtMs(m.lat/m.calls)]) }),
+  }));
+  g2.appendChild(card({
+    title:'Umami 流量', sub:'PV / 访问（近 30 天按日）',
+    bodyHTML:'<div class="chart-box" data-chart="pv"></div>',
+    table: () => ({ headers:['日期','PV','访问'], nums:[false,true,true],
+      rows: a.daily.map(d => [dayLabel(d.x), d.pageviews, d.sessions]) }),
+  }));
+  view.appendChild(g2);
+
+  const g3 = document.createElement('div'); g3.className = 'grid-2';
+  g3.appendChild(turnCard(a));
+  g3.appendChild(mediaCard(a));
+  view.appendChild(g3);
+
+  // 图表
+  barStack($('[data-chart="token-day"]'), a.days, [
+    { name:'行为', data: a.days.map(d=>a.byDay[d].beh), color: T().series[0] },
+    { name:'系统开销 C3', data: a.days.map(d=>a.byDay[d].sys), color: T().series[1] },
+  ]);
+  barStack($('[data-chart="buckets"]'), a.days, [
+    { name:'输入', data: a.days.map(d=>a.byDay[d].in) },
+    { name:'输出', data: a.days.map(d=>a.byDay[d].out) },
+    { name:'缓存读', data: a.days.map(d=>a.byDay[d].cr) },
+    { name:'缓存写', data: a.days.map(d=>a.byDay[d].cw) },
+    { name:'推理', data: a.days.map(d=>a.byDay[d].rs) },
+  ]);
+  barSingle($('[data-chart="model-calls"]'), models.map(m=>m.model), models.map(m=>m.calls), { color: T().series[0] });
+  barSingle($('[data-chart="model-lat"]'), models.map(m=>m.model), models.map(m=>Math.round(m.lat/m.calls)), { color: T().series[0], fmt: fmtMs, unit:'' });
+  lineChart($('[data-chart="pv"]'), a.daily.map(d=>dayLabel(d.x)), [
+    { name:'PV', data: a.daily.map(d=>d.pageviews), color: T().series[0] },
+    { name:'访问', data: a.daily.map(d=>d.sessions), color: T().series[1] },
+  ]);
+}
+
+function turnCard(a) {
+  const total = a.turns.length;
+  const parts = [
+    { k:'completed', label:'完成', color: T().good },
+    { k:'llm-failure', label:'模型失败', color: T().crit },
+    { k:'interrupted', label:'中断', color: T().serious },
+  ].filter(p => a.outcome[p.k] > 0);
+  const bars = parts.map(p =>
+    `<i style="flex:${a.outcome[p.k]};background:${p.color}"></i>`).join('');
+  const legend = parts.map(p =>
+    `<div class="st ${p.k==='completed'?'good':p.k==='interrupted'?'mid':'bad'}">${p.label} ${a.outcome[p.k]}</div>`).join('');
+  return card({
+    title:'Turn 结局', sub:`共 ${total} 轮`,
+    bodyHTML: `
+      <div class="meter-row"><span class="v">${a.turnRate == null ? '—' : Math.round(a.turnRate*100)+'%'}</span><span class="l">turn 成功率</span></div>
+      <div class="meter"><div class="meter-fill ${a.turnRate!=null && a.turnRate<0.7?'crit':a.turnRate!=null&&a.turnRate<0.9?'warn':''}" style="width:${a.turnRate==null?0:Math.round(a.turnRate*100)}%"></div></div>
+      <div class="st-list">
+        <div class="st-row"><div class="bar">${bars || '<i style="flex:1;background:var(--grid)"></i>'}</div></div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">${legend || '<span class="sub" style="font-size:12px;color:var(--muted)">无 turn 记录</span>'}</div>
+      </div>`,
+    table: () => ({ headers:['结局','次数'], nums:[false,true],
+      rows: parts.map(p => [p.label, a.outcome[p.k]]) }),
+  });
+}
+
+function mediaCard(a) {
+  const body = a.mediaEvents.length
+    ? `<div class="placeholder-body"><span class="cnt">${a.mediaEvents.length}</span> 个媒体任务确认事件（Umami）<div class="note">jobKind：${[...new Set(a.mediaEvents.map(e=>e.jobKind).filter(Boolean))].join(' / ') || '—'}</div></div>`
+    : `<div class="placeholder-body">
+        <div class="cnt">—</div>题材 / 媒体维度
+        <div class="note">行为事件表（behavior_event）尚未建立，v1 数据源暂无题材与媒体生产行为；媒体任务确认目前仅见 Umami 前端事件。</div>
+       </div>`;
+  return card({ title:'题材 / 媒体任务', sub:'占位 — 行为事件表未建', bodyHTML: body });
+}
+
+/* ================= 变体 B — 创作者视图 ================= */
+function renderB(a, view) {
+  if (!a.creators.length) {
+    const c = card({ title:'创作者' });
+    c.querySelector('.card-body').innerHTML = emptyBox('该范围内没有创作者记录', '换个时间范围，或切到「模拟数据」预览看板密度。');
+    view.appendChild(c); return;
+  }
+  if (!state.creator || !a.creators.some(c=>c.id===state.creator)) state.creator = a.creators[0].id;
+  const sel = a.creators.find(c=>c.id===state.creator);
+
+  const layout = document.createElement('div'); layout.className = 'b-layout';
+  const spine = card({ title:'创作者排行', sub:'按 Token 消耗' });
+  const maxTok = a.creators[0].tokens || 1;
+  for (const [i,c] of a.creators.entries()) {
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'creator-row';
+    row.setAttribute('aria-pressed', String(c.id === state.creator));
+    row.title = c.id;
+    row.innerHTML = `
+      <div class="cr-top"><span class="cr-id">${i+1}. ${esc(shortId(c.id))}</span><span class="cr-tokens">${fmtK(c.tokens)} tok</span></div>
+      <div class="cr-bar"><i style="width:${Math.max(2, Math.round(c.tokens/maxTok*100))}%"></i></div>
+      <div class="cr-meta"><span>${c.sessions.size} 会话</span><span>${c.calls} 调用</span><span>${c.turns ? Math.round((c.turns-c.fails)/c.turns*100)+'%' : '—'} 成功率</span><span>最近 ${dkey(c.last)}</span></div>`;
+    row.addEventListener('click', () => { state.creator = c.id; render(); });
+    spine.appendChild(row);
+  }
+  layout.appendChild(spine);
+
+  const b = agg({ creator: state.creator });
+  const detail = document.createElement('div');
+
+  const kpis = document.createElement('section');
+  kpis.className = 'kpi-row';
+  kpis.style.gridTemplateColumns = 'repeat(4, 1fr)';
+  kpis.appendChild(tile('Token 合计', fmtK(b.tokensTotal), `行为 ${fmtK(b.tokensBeh)} · 系统 ${fmtK(b.tokensSys)}`));
+  kpis.appendChild(tile('AI 调用', fmtK(b.llm.length), `平均延迟 ${fmtMs(b.latencyAvg)}`));
+  kpis.appendChild(tile('会话', fmtK(b.sess.length)));
+  kpis.appendChild(tile('Turn 成功率', meterHTML(b.turnRate, `完成 ${b.outcome.completed}/${b.turns.length}`)));
+  detail.appendChild(kpis);
+
+  const g = document.createElement('div'); g.className = 'grid-2';
+  g.appendChild(card({
+    title:'每日 Token 消耗', sub:`${shortId(state.creator)}`,
+    bodyHTML:'<div class="chart-box" data-chart="b-day"></div>',
+    table: () => ({ headers:['日期','行为','系统开销 C3'], nums:[false,true,true],
+      rows: b.days.map(d => [d, fmtK(b.byDay[d].beh), fmtK(b.byDay[d].sys)]) }),
+  }));
+  const bModels = [...b.byModel.values()].sort((x,y)=>y.tokens-x.tokens);
+  g.appendChild(card({
+    title:'模型分布', sub:'Token 按模型',
+    bodyHTML:'<div class="chart-box" data-chart="b-model"></div>',
+    table: () => ({ headers:['模型','Token','调用'], nums:[false,true,true],
+      rows: bModels.map(m => [m.model, fmtK(m.tokens), m.calls]) }),
+  }));
+  detail.appendChild(g);
+
+  // 真实 Umami 事件未带 creator_id 属性（v1 上报后可对齐）→ 真实模式列全部，模拟模式按 creator 过滤
+  const evList = state.src === 'real' ? a.events : b.events;
+  const evRows = evList.slice().reverse().map(e => {
+    const d = new Date(e.ts);
+    const detail2 = [e.name, e.jobKind, e.device, e.browser].filter(Boolean).join(' · ');
+    return `<tr><td class="ts">${esc(fmtTs(e.ts))}</td><td><span class="src-badge">Umami</span></td><td>${esc(detail2)}</td><td class="num">${esc(e.url||'')}</td></tr>`;
+  }).join('');
+  const evTable = `<table class="twin"><thead><tr><th>时间</th><th>来源</th><th>事件</th><th>路径</th></tr></thead>
+    <tbody>${evRows || '<tr><td colspan="4" style="color:var(--muted)">无对齐事件</td></tr>'}</tbody></table>`;
+  const realHint = state.src === 'real'
+    ? '<p class="note">真实 Umami 事件尚未带 creator_id 属性（v1 正式上报后可按人对齐），此处暂列全部事件。</p>' : '';
+  detail.appendChild(card({
+    title:'Umami 事件（按 creator 对齐）', sub:'前端可见行为',
+    bodyHTML: `<div class="timeline" style="max-height:280px">${evTable}</div>${realHint}`,
+  }));
+
+  layout.appendChild(detail);
+  view.appendChild(layout);
+
+  barStack($('[data-chart="b-day"]'), b.days, [
+    { name:'行为', data: b.days.map(d=>b.byDay[d].beh), color: T().series[0] },
+    { name:'系统开销 C3', data: b.days.map(d=>b.byDay[d].sys), color: T().series[1] },
+  ]);
+  barSingle($('[data-chart="b-model"]'), bModels.map(m=>m.model), bModels.map(m=>m.tokens), { color: T().series[0] });
+}
+
+/* ================= 变体 C — 事件监控台 ================= */
+function renderC(a, view) {
+  const meters = document.createElement('section');
+  meters.className = 'meters-row';
+  const m1 = card({ title:'Turn 成功率', bodyHTML: meterHTML(a.turnRate, `完成 ${a.outcome.completed}/${a.turns.length}`) });
+  const behShare = a.tokensTotal ? a.tokensBeh/a.tokensTotal : null;
+  const m2 = card({ title:'行为 Token 占比', sub:'其余为系统开销 C3',
+    bodyHTML: meterHTML(behShare, `行为 ${fmtK(a.tokensBeh)} / 合计 ${fmtK(a.tokensTotal)}`) });
+  const fails = a.outcome['llm-failure'] + a.outcome.interrupted;
+  const m3 = card({ title:'失败 / 中断 / 延迟', bodyHTML: `
+    <div style="display:flex;gap:22px;margin-top:6px;flex-wrap:wrap">
+      <div><div class="value" style="font-size:22px;font-weight:600">${fails}</div><div class="l" style="font-size:12px;color:var(--muted)">失败 + 中断 turn</div></div>
+      <div><div style="font-size:22px;font-weight:600">${fmtMs(a.latencyAvg)}</div><div style="font-size:12px;color:var(--muted)">平均调用延迟</div></div>
+      <div><div style="font-size:22px;font-weight:600">${fmtK(a.mediaEvents.length)}</div><div style="font-size:12px;color:var(--muted)">媒体任务确认（Umami）</div></div>
+    </div>` });
+  meters.append(m1, m2, m3);
+  view.appendChild(meters);
+
+  // 时间线
+  const CAP = 300;
+  const rows = a.timeline.slice(0, CAP).map(e => {
+    let kind = '', detail = '', fail = false;
+    if (e.kind === 'umami-event') {
+      kind = e.ev.name;
+      detail = [e.ev.jobKind, e.ev.device, e.ev.browser, e.ev.url].filter(Boolean).join(' · ');
+    } else if (e.kind === 'session_created') {
+      kind = '会话创建'; detail = e.sessionId;
+    } else if (e.kind === 'llm_call') {
+      kind = 'LLM 调用';
+      const u = e.rec.usage || {};
+      detail = `${e.rec.purpose} · ${e.rec.model} · ${fmtK(u.inputTokens||0)} in / ${fmtK(u.outputTokens||0)} out · ${fmtMs(e.rec.latencyMs)}`;
+    } else if (e.kind === 'turn_end') {
+      kind = 'Turn 结束';
+      fail = e.rec.reason && e.rec.reason.kind !== 'completed';
+      detail = fail ? `第 ${e.rec.turn} 轮 · ${e.rec.reason.kind}${e.rec.reason.code ? ' '+e.rec.reason.code : ''}` : `第 ${e.rec.turn} 轮 · 完成`;
+    } else if (e.kind === 'assistant_message') {
+      kind = '回复完成'; detail = `turn ${e.rec.turn} · step ${e.rec.step}`;
+    } else { kind = e.kind; }
+    return `<tr${fail ? ' class="fail"' : ''}>
+      <td class="ts">${esc(fmtTs(e.ts))}</td>
+      <td><span class="src-badge">${esc(e.src)}</span></td>
+      <td title="${esc(e.creator||'')}">${esc(shortId(e.creator))}</td>
+      <td${fail ? ' style="color:var(--crit);font-weight:600"' : ''}>${fail ? '✕ ' : ''}${esc(kind)}</td>
+      <td style="white-space:normal">${esc(detail)}</td></tr>`;
+  }).join('');
+  const tl = card({
+    title:'事件时间线', sub:`自建 + Umami 合并 · 倒序 · 共 ${a.timeline.length} 条${a.timeline.length > CAP ? `，显示前 ${CAP}` : ''}`,
+    bodyHTML: `<div class="timeline"><table class="tl">
+      <thead><tr><th>时间</th><th>来源</th><th>创作者</th><th>事件</th><th>详情</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" style="color:var(--muted)">该范围内没有事件</td></tr>'}</tbody></table></div>`,
+  });
+  view.appendChild(tl);
+
+  const g = document.createElement('div'); g.className = 'grid-2';
+  g.appendChild(card({
+    title:'平均调用延迟按天',
+    bodyHTML:'<div class="chart-box" data-chart="c-lat"></div>',
+    table: () => ({ headers:['日期','平均延迟','调用'], nums:[false,true,true],
+      rows: a.days.map(d => { const b = a.byDay[d]; return [d, fmtMs(b.calls?b.lat/b.calls:0), b.calls]; }) }),
+  }));
+  g.appendChild(turnCard(a));
+  view.appendChild(g);
+
+  lineChart($('[data-chart="c-lat"]'), a.days, [
+    { name:'平均延迟', data: a.days.map(d => { const b = a.byDay[d]; return b.calls ? Math.round(b.lat/b.calls) : null; }), color: T().series[0] },
+  ]);
+}
+
+/* ================= 渲染 & 路由 ================= */
+function render() {
+  document.documentElement.dataset.theme = state.theme;
+  disposeCharts();
+  const view = $('#view');
+  view.innerHTML = '';
+  const a = agg();
+  if (state.variant === 'A') renderA(a, view);
+  else if (state.variant === 'B') renderB(a, view);
+  else renderC(a, view);
+
+  const v = VARIANTS.find(v => v.key === state.variant) || VARIANTS[0];
+  $('#variantLabel').textContent = `${v.key} — ${v.name}`;
+  const ds = dataset();
+  $('#scopeInfo').textContent = state.src === 'demo'
+    ? `模拟数据（种子 20260917）· ${ds.records.length} 条记录`
+    : `生成于 ${new Date(ds.generatedAt).toLocaleString('zh-CN')} · ${ds.records.length} 条自建记录${ds.umami ? ' + Umami' : '（Umami 不可达）'}`;
+  syncSeg();
+  pushUrl();
+}
+function pushUrl() {
+  const p = new URLSearchParams({ variant: state.variant, src: state.src, range: state.range, theme: state.theme });
+  history.replaceState(null, '', location.pathname + '?' + p);
+}
+function syncSeg() {
+  for (const b of $('#srcSeg').children) b.setAttribute('aria-pressed', String(b.dataset.src === state.src));
+  for (const b of $('#rangeSeg').children) b.setAttribute('aria-pressed', String(b.dataset.range === state.range));
+}
+
+$('#srcSeg').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  state.src = b.dataset.src; render();
+});
+$('#rangeSeg').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  state.range = b.dataset.range; render();
+});
+$('#themeBtn').addEventListener('click', () => {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark'; render();
+});
+
+function cycle(dir) {
+  const i = VARIANTS.findIndex(v => v.key === state.variant);
+  state.variant = VARIANTS[(i + dir + VARIANTS.length) % VARIANTS.length].key;
+  render();
+}
+$('#prevBtn').addEventListener('click', () => cycle(-1));
+$('#nextBtn').addEventListener('click', () => cycle(1));
+addEventListener('keydown', ev => {
+  if (ev.target.matches('input, textarea, [contenteditable]')) return;
+  if (ev.key === 'ArrowLeft') cycle(-1);
+  if (ev.key === 'ArrowRight') cycle(1);
+});
+
+render();
+</script>
+</body>
+</html>

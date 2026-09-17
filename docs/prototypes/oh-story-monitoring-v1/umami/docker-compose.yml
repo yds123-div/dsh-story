@@ -1,0 +1,25 @@
+# PROTOTYPE — 本地 Umami（监控采集层 v1 原型，见 ../spec.md §4.1）
+# 启动：docker compose up -d ；管理台 http://127.0.0.1:3000
+services:
+  umami:
+    image: umamisoftware/umami:postgresql-latest
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      DATABASE_URL: postgres://umami:umami@db:5432/umami
+      DATABASE_TYPE: postgresql
+      APP_SECRET: prototype-only-secret-0192
+    depends_on:
+      - db
+    restart: unless-stopped
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami
+      POSTGRES_DB: umami
+    volumes:
+      - umami-pg-proto:/var/lib/postgresql/data
+    restart: unless-stopped
+volumes:
+  umami-pg-proto:

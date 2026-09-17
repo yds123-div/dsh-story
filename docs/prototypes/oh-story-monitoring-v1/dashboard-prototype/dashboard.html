@@ -1,0 +1,1244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>场记 · oh-story 监控看板（蓝图原型）</title>
+<!--
+  蓝图原型：按《设计文档》§7 分层（L0 北极星 → L1 一级 → P1 8 图）+ §9.5 画像页签组织。
+  页签：总览 / 画像（点创作者下钻）/ 明细（事件流水）。
+  缺口指标：真实模式显示占位卡（标注依赖的采集契约），切「模拟数据」可预览全部图表形态（演示角标）。
+  数据源：真实 = monitor JSONL + Umami（build-dashboard.mjs 内联）；模拟 = 确定性种子，仅评估形态。
+  throwaway — 形态经团队评审后沉淀到 /oh-story/monitor 插件路由，采集按契约①→③→④补。
+-->
+<script src="./echarts.min.js"></script>
+<style>
+  :root {
+    --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --hair:rgba(11,11,11,.10);
+    --slate:#0d366b; --accent:#2a78d6; --track:#cde2fb;
+    --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  }
+  html[data-theme="dark"] {
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --hair:rgba(255,255,255,.10);
+    --slate:#0a2a54; --accent:#3987e5; --track:#0d366b;
+    --good:#0ca30c; --crit:#d03b3b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px;
+  }
+
+  /* ---- 场记板页头 ---- */
+  .slate { display: flex; align-items: stretch; background: var(--slate); color: #fff; }
+  .clapper {
+    width: 88px; flex: none; border-right: 3px solid var(--slate);
+    background: repeating-linear-gradient(-45deg, transparent 0 12px, rgba(255,255,255,.92) 12px 24px);
+  }
+  .slate-main { flex: 1; padding: 18px 24px; min-width: 0; }
+  .slate h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: .02em; }
+  .slate .sub { margin: 2px 0 0; font-size: 12.5px; color: rgba(255,255,255,.78); }
+  .slate-side { display: flex; align-items: center; gap: 10px; padding: 0 24px; }
+  .tag-proto {
+    font-size: 11px; padding: 3px 8px; border: 1px solid rgba(255,255,255,.45);
+    border-radius: 999px; color: rgba(255,255,255,.9);
+  }
+  .theme-btn {
+    font-size: 12.5px; color: #fff; border: 1px solid rgba(255,255,255,.4);
+    border-radius: 999px; padding: 4px 12px;
+  }
+  .theme-btn:hover { background: rgba(255,255,255,.12); }
+
+  /* ---- 过滤行 ---- */
+  .filters {
+    max-width: 1280px; margin: 16px auto 0; padding: 0 24px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .seg { display: flex; border: 1px solid var(--hair); border-radius: 6px; overflow: hidden; background: var(--surface); }
+  .seg button { padding: 5px 14px; font-size: 13px; color: var(--ink2); }
+  .seg button + button { border-left: 1px solid var(--hair); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--page); font-weight: 600; }
+  .scope-info { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  /* ---- 页签 ---- */
+  .tabs {
+    max-width: 1280px; margin: 14px auto 0; padding: 0 24px;
+    display: flex; gap: 2px; border-bottom: 1px solid var(--hair);
+  }
+  .tab {
+    padding: 7px 18px; font-size: 13.5px; color: var(--ink2);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+
+  main { max-width: 1280px; margin: 0 auto; padding: 8px 24px 96px; }
+
+  .sec {
+    font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .08em;
+    margin: 20px 0 10px;
+  }
+  .sec:first-child { margin-top: 14px; }
+
+  /* ---- 卡片 ---- */
+  .card {
+    background: var(--surface); border: 1px solid var(--hair); border-radius: 4px;
+    padding: 16px 18px 12px; min-width: 0;
+  }
+  .card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .card-head h2 { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .card-head .sub { font-size: 12px; color: var(--muted); }
+  .demo-badge {
+    font-size: 10.5px; padding: 1px 7px; border-radius: 999px;
+    background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--ink2);
+    border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  }
+  .tbl-btn {
+    margin-left: auto; font-size: 12px; color: var(--muted);
+    border: 1px solid var(--hair); border-radius: 4px; padding: 1px 8px;
+  }
+  .tbl-btn:hover { color: var(--ink2); border-color: var(--axis); }
+  .chart-box { height: 240px; width: 100%; }
+  table.twin { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.twin th {
+    text-align: left; font-weight: 600; color: var(--ink2); padding: 4px 8px;
+    border-bottom: 1px solid var(--grid);
+  }
+  table.twin td { padding: 3.5px 8px; border-bottom: 1px solid var(--grid); color: var(--ink2); }
+  table.twin td.num, table.twin th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---- 占位卡（采集契约未建） ---- */
+  .ph { padding: 22px 8px 14px; text-align: center; }
+  .ph-dep {
+    display: inline-block; font-size: 11px; padding: 2px 10px; border-radius: 999px;
+    border: 1px dashed var(--axis); color: var(--muted); margin-bottom: 8px;
+  }
+  .ph p { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+  /* ---- KPI ---- */
+  .kpi-row { display: grid; gap: 14px; margin-bottom: 4px; }
+  .kpi-row.l0 { grid-template-columns: repeat(3, 1fr); }
+  .kpi-row.l1 { grid-template-columns: repeat(6, 1fr); }
+  .kpi-row.c4 { grid-template-columns: repeat(4, 1fr); }
+  .tile { background: var(--surface); border: 1px solid var(--hair); border-radius: 4px; padding: 12px 16px; }
+  .tile .label { font-size: 12px; color: var(--muted); }
+  .tile .value { font-size: 24px; font-weight: 600; color: var(--ink); margin-top: 2px; }
+  .tile.hero .value { font-size: 40px; line-height: 1.15; font-weight: 650; }
+  .tile .detail { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .tile.na .value { color: var(--muted); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 980px) {
+    .grid-2, .grid-3, .kpi-row.l0, .kpi-row.l1, .kpi-row.c4 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 620px) {
+    .grid-2, .grid-3, .kpi-row.l0, .kpi-row.l1, .kpi-row.c4 { grid-template-columns: 1fr; }
+    .clapper { width: 48px; }
+  }
+
+  /* ---- 计量条 ---- */
+  .meter { height: 8px; border-radius: 4px; background: var(--track); margin-top: 8px; overflow: hidden; position: relative; }
+  .meter-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+  .meter-fill.warn { background: var(--warn); }
+  .meter-fill.crit { background: var(--crit); }
+  .meter-row { display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+  .meter-row .v { font-size: 20px; font-weight: 600; }
+  .meter-row .l { font-size: 12px; color: var(--muted); }
+
+  /* ---- 状态（图标 + 文字） ---- */
+  .st { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; }
+  .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .st.good::before { background: var(--good); }
+  .st.bad::before { background: var(--crit); }
+  .st.mid::before { background: var(--serious); }
+  .st-list { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 4px; }
+  .st-row { display: flex; align-items: center; gap: 10px; }
+  .st-row .bar { flex: 1; height: 14px; display: flex; gap: 2px; }
+  .st-row .bar i { border-radius: 2px; min-width: 2px; }
+
+  /* ---- 漏斗 ---- */
+  .funnel { display: flex; flex-direction: column; gap: 6px; padding: 6px 2px; }
+  .fn-row { display: grid; grid-template-columns: 92px 1fr 84px; align-items: center; gap: 10px; }
+  .fn-name { font-size: 12.5px; color: var(--ink2); text-align: right; }
+  .fn-bar { height: 22px; border-radius: 0 4px 4px 0; min-width: 2px; }
+  .fn-bar.na { background: var(--grid) !important; border-radius: 4px; }
+  .fn-val { font-size: 12.5px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+  .fn-val .conv { color: var(--muted); font-size: 11.5px; }
+  .fn-val .todo { color: var(--muted); font-size: 11px; }
+
+  /* ---- 创作者脊柱（画像页签） ---- */
+  .b-layout { display: grid; grid-template-columns: 380px 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 980px) { .b-layout { grid-template-columns: 1fr; } }
+  .creator-row {
+    display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .creator-row:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+  .creator-row[aria-pressed="true"] { border-color: var(--hair); background: var(--page); }
+  .cr-top { display: flex; align-items: baseline; gap: 8px; }
+  .cr-id { font-weight: 600; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .cr-tokens { margin-left: auto; font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+  .cr-bar { height: 6px; background: var(--track); border-radius: 3px; margin: 7px 0 5px; }
+  .cr-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  .cr-meta { font-size: 11.5px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* ---- 明细页签 ---- */
+  .timeline { max-height: 520px; overflow: auto; }
+  table.tl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tl th {
+    position: sticky; top: 0; background: var(--surface); text-align: left; font-weight: 600;
+    color: var(--ink2); padding: 6px 8px; border-bottom: 1px solid var(--axis); font-size: 12px;
+  }
+  table.tl td { padding: 4px 8px; border-bottom: 1px solid var(--grid); color: var(--ink2); white-space: nowrap; }
+  table.tl td.ts { font-variant-numeric: tabular-nums; color: var(--muted); }
+  table.tl tr.fail td { color: var(--ink); }
+  .src-badge {
+    font-size: 10.5px; border: 1px solid var(--hair); border-radius: 3px; padding: 0 5px;
+    color: var(--muted); white-space: nowrap;
+  }
+  .meters-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 980px) { .meters-row { grid-template-columns: 1fr; } }
+
+  .empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+  .empty b { display: block; color: var(--ink2); font-size: 14px; margin-bottom: 4px; }
+  .note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<header class="slate">
+  <div class="clapper" aria-hidden="true"></div>
+  <div class="slate-main">
+    <h1>场记 · oh-story 监控看板</h1>
+    <p class="sub">蓝图原型 — 按设计文档 L0→L1→P1 8 图组织 · 自建 JSONL 与 Umami 按 creator 对齐</p>
+  </div>
+  <div class="slate-side">
+    <span class="tag-proto">PROTOTYPE · throwaway</span>
+    <button class="theme-btn" id="themeBtn" type="button">◐ 明暗</button>
+  </div>
+</header>
+
+<div class="filters">
+  <div class="seg" id="srcSeg" role="group" aria-label="数据源">
+    <button type="button" data-src="real">真实数据</button>
+    <button type="button" data-src="demo">模拟数据</button>
+  </div>
+  <div class="seg" id="rangeSeg" role="group" aria-label="时间范围">
+    <button type="button" data-range="all">全部</button>
+    <button type="button" data-range="7">近 7 天</button>
+    <button type="button" data-range="1">今天</button>
+  </div>
+  <span class="scope-info" id="scopeInfo"></span>
+</div>
+
+<nav class="tabs" id="tabs" role="tablist">
+  <button class="tab" type="button" role="tab" data-tab="overview">总览</button>
+  <button class="tab" type="button" role="tab" data-tab="profile">画像</button>
+  <button class="tab" type="button" role="tab" data-tab="detail">明细</button>
+</nav>
+
+<main id="view"></main>
+
+<script>
+window.__DATA__ = {"generatedAt":"2026-09-17T03:32:08.155Z","sources":{"jsonl":["D:/Shenlan/ohstory-chain-test/monitor-proto/monitor-prototype.jsonl","C:/Users/18307/.dsh/monitor-prototype/monitor-prototype.jsonl"],"umami":"http://127.0.0.1:3000 (2d2df428-1c24-41b9-a6d7-ba83b98be3ed)"},"records":[{"kind":"session_created","ts":1789566135139,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3"},{"kind":"llm_call","ts":1789566136723,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","provider":"qianwen30b","model":"qwen3-30b-2507","purpose":"session-title","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3","latencyMs":1486,"usage":{"inputTokens":130,"outputTokens":5,"totalTokens":135},"finish":{"kind":"stop"}},{"kind":"llm_call","ts":1789566138291,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","provider":"qianwen30b","model":"qwen3-30b-2507","purpose":"behavior","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3","latencyMs":3055,"usage":{"inputTokens":12498,"outputTokens":2,"totalTokens":12500},"finish":{"kind":"stop"}},{"kind":"assistant_message","ts":1789566138294,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3","turn":1,"step":1,"usage":{"inputTokens":12498,"outputTokens":2,"totalTokens":12500},"model":{"kind":"model","provider":"qianwen30b","model":"qwen3-30b-2507","replayState":{"response":{"kind":"pi-ai","version":2,"api":"anthropic-messages","provider":"qianwen30b","model":"qwen3-30b-2507","responseId":"chatcmpl-971afc50142c8335","stopReason":"stop"},"blocks":[{"type":"text"}]}},"interrupted":false},{"kind":"turn_end","ts":1789566138296,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-73caae95-fb70-4fd0-a35c-adfe431d3fa3","turn":1,"reason":{"kind":"completed"}},{"kind":"session_created","ts":1789566523131,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-6e751b0c-d8a9-4094-bb40-92ca4751799b"},{"kind":"session_created","ts":1789566674497,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-1512d131-fdb7-4d02-bd3d-ab94bfbe53fe"},{"kind":"session_created","ts":1789566812836,"creator":"95b693af-bb67-44f6-9493-05b603ef7b80","sessionId":"session-816e45fb-2824-4e4c-a399-c09ef9e9212d"}],"umami":{"websiteId":"2d2df428-1c24-41b9-a6d7-ba83b98be3ed","url":"http://127.0.0.1:3000","stats":{"pageviews":4,"visitors":3,"visits":3,"bounces":1,"totaltime":2152,"comparison":{"pageviews":0,"visitors":0,"visits":0,"bounces":0,"totaltime":0}},"daily":[{"x":"2026-09-16","pageviews":4,"sessions":3}],"events":[{"ts":1789566673883,"name":"pageview","eventType":1,"url":"/","device":"laptop","browser":"chrome","os":"Windows 10","title":"DSH Local Build"},{"ts":1789566522140,"name":"pageview","eventType":1,"url":"/","device":"laptop","browser":"edge-chromium","os":"Windows 10","title":"DSH 本地构建"},{"ts":1789564521019,"name":"media_job_confirmed","eventType":2,"url":"/D:/Shenlan/dsh-story/docs/prototypes/oh-story-monitoring-v1/umami/track-test.html","device":"laptop","browser":"chrome","os":"Windows 10","title":"PROTOTYPE — Umami track() 直报测试页"},{"ts":1789564521018,"name":"session_created","eventType":2,"url":"/D:/Shenlan/dsh-story/docs/prototypes/oh-story-monitoring-v1/umami/track-test.html","device":"laptop","browser":"chrome","os":"Windows 10","title":"PROTOTYPE — Umami track() 直报测试页"},{"ts":1789564521017,"name":"pageview","eventType":1,"url":"/D:/Shenlan/dsh-story/docs/prototypes/oh-story-monitoring-v1/umami/track-test.html","device":"laptop","browser":"chrome","os":"Windows 10","title":"PROTOTYPE — Umami track() 直报测试页"},{"ts":1789564159937,"name":"pageview","eventType":1,"url":"/","device":"laptop","browser":null,"os":"Windows 10","title":"workbench"},{"ts":1789564159830,"name":"session_created","eventType":2,"url":"/workbench","device":"laptop","browser":null,"os":"Windows 10","title":"track-test"}]}};
+
+/* ================= 状态 ================= */
+const TABS = [
+  { key: 'overview', name: '总览' },
+  { key: 'profile', name: '画像' },
+  { key: 'detail', name: '明细' },
+];
+const params = new URLSearchParams(location.search);
+const state = {
+  tab: TABS.some(t=>t.key===params.get('tab')) ? params.get('tab') : 'overview',
+  src: params.get('src') === 'demo' ? 'demo' : 'real',
+  range: ['all','7','1'].includes(params.get('range')) ? params.get('range') : 'all',
+  creator: null,
+  theme: params.get('theme') === 'dark' ? 'dark'
+       : params.get('theme') === 'light' ? 'light'
+       : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+};
+
+/* ================= 调色板（dataviz 参考实例，验证器已过：亮 9.1 / 暗 8.4 CVD ΔE） ================= */
+const SERIES = {
+  light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'],
+  dark:  ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'],
+};
+const FUNNEL = { // 序数 ramp（漏斗五级，验证过的 sequential 蓝）
+  light: ['#86b6ef', '#6da7ec', '#5598e7', '#2a78d6', '#1c5cab'],
+  dark:  ['#6da7ec', '#5598e7', '#3987e5', '#256abf', '#184f95'],
+};
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const T = () => ({
+  surface: cssVar('--surface'), ink: cssVar('--ink'), ink2: cssVar('--ink2'),
+  muted: cssVar('--muted'), grid: cssVar('--grid'), axis: cssVar('--axis'),
+  good: cssVar('--good'), crit: cssVar('--crit'), warn: cssVar('--warn'), serious: cssVar('--serious'),
+  series: SERIES[state.theme], funnel: FUNNEL[state.theme],
+});
+
+/* ================= 模拟数据（确定性种子，只评估形态） ================= */
+const localDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function genDemo(){
+  const rnd = mulberry32(20260917);
+  const pick = a => a[Math.floor(rnd()*a.length)];
+  const ri = (a,b) => a + Math.floor(rnd()*(b-a+1));
+  const uid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = rnd()*16|0; return (c==='x' ? r : (r&3|8)).toString(16);
+  });
+  const today = new Date(); today.setHours(0,0,0,0);
+  const DAYS = 14;
+  const models = [
+    { provider:'qianwen30b', model:'qwen3-30b-2507' },
+    { provider:'deepseek', model:'deepseek-v3-2508' },
+  ];
+  const topics = ['都市逆袭','甜宠','悬疑','古装','职场','科幻'];
+  const behCats = ['剧本创作','媒体生产','资产编辑','浏览检索','系统管理'];
+  const behNames = {
+    '剧本创作':['story-outline','story-episode','short-drama-write','rewrite-scene'],
+    '媒体生产':['image-gen','video-gen','composition'],
+    '资产编辑':['asset-tag','asset-crop'],
+    '浏览检索':['search-asset','browse-story'],
+    '系统管理':['profile-edit','export-story'],
+  };
+  const creators = Array.from({length:6}, uid);
+  const act = [0.28, 0.45, 0.6, 0.75, 0.55, 0.85];
+  const records = [], umamiEvents = [], daily = [], tasks = [], behaviors = [];
+  for (let d = DAYS-1; d >= 0; d--) {
+    const dayStart = today.getTime() - d*864e5;
+    let pv = 0, sess = 0;
+    creators.forEach((cid, ci) => {
+      if (rnd() > act[ci]) return;
+      const nSess = ri(1,3);
+      for (let s = 0; s < nSess; s++) {
+        const sid = 'session-' + uid();
+        const start = dayStart + ri(9,22)*3600e3 + ri(0,59)*60e3;
+        const dev = pick(['laptop','desktop','mobile']);
+        const brw = pick(['chrome','edge-chromium','safari']);
+        records.push({ kind:'session_created', ts:start, creator:cid, sessionId:sid });
+        umamiEvents.push({ ts:start, name:'session_created', creator:cid, device:dev, browser:brw, url:'/workbench' });
+        // 任务（契约①③ 的形态预览：题材 + 成败 + 交付）
+        const taskOk = rnd() < 0.88;
+        tasks.push({ creator:cid, topic:pick(topics), created:start+ri(1e3,30e3),
+          durationMin:ri(4,45), success:taskOk });
+        // 行为事件（契约① 的形态预览：五大类 + 具体行为 + token 归属）
+        const nBeh = ri(2,5);
+        for (let b = 0; b < nBeh; b++) {
+          const cat = pick(behCats);
+          behaviors.push({ creator:cid, cat, name:pick(behNames[cat]),
+            ts:start+ri(5e3,600e3), tokens:ri(400,9000) });
+        }
+        const m0 = pick(models);
+        records.push({ kind:'llm_call', ts:start+ri(300,1500), creator:cid, provider:m0.provider, model:m0.model,
+          purpose:'session-title', sessionId:sid, latencyMs:ri(600,2200),
+          usage:{ inputTokens:ri(90,220), outputTokens:ri(3,14) }, finish:{kind:'stop'} });
+        if (rnd() < 0.3) {
+          const jk = pick(['image','video','composition']);
+          umamiEvents.push({ ts:start+ri(2e3,90e3), name:'media_job_confirmed', creator:cid,
+            jobKind:jk, units: jk==='image' ? ri(4,20) : ri(15,180), device:dev, browser:brw, url:'/workbench' });
+        }
+        const turns = ri(1,8);
+        for (let t = 1; t <= turns; t++) {
+          const turnTs = start + t*ri(25e3,130e3);
+          const m = pick(models);
+          const inp = ri(3000,28000), out = ri(150,2500);
+          const usage = { inputTokens:inp, outputTokens:out };
+          if (rnd() < 0.35) usage.cacheReadTokens = ri(800,8000);
+          if (rnd() < 0.12) usage.cacheWriteTokens = ri(200,2000);
+          if (rnd() < 0.4)  usage.reasoningTokens = ri(0,1200);
+          records.push({ kind:'llm_call', ts:turnTs, creator:cid, provider:m.provider, model:m.model,
+            purpose:'behavior', sessionId:sid, latencyMs:ri(900,14000), usage, finish:{kind:'stop'} });
+          if (rnd() < 0.15) records.push({ kind:'llm_call', ts:turnTs+ri(500,2500), creator:cid, provider:m.provider, model:m.model,
+            purpose:'compaction', sessionId:sid, latencyMs:ri(800,3200),
+            usage:{ inputTokens:ri(6000,14000), outputTokens:ri(400,1600) }, finish:{kind:'stop'} });
+          const r = rnd();
+          const reason = r < 0.91 ? { kind:'completed' }
+            : r < 0.97 ? { kind:'llm-failure', code:pick(['502','429','timeout']), message:'upstream unavailable' }
+            : { kind:'interrupted' };
+          records.push({ kind:'turn_end', ts:turnTs+ri(1000,15000), creator:cid, sessionId:sid, turn:t, reason });
+        }
+      }
+      pv += ri(1,5); sess += nSess;
+    });
+    daily.push({ x: localDate(new Date(dayStart)), pageviews: pv+ri(2,9), sessions: sess });
+  }
+  return {
+    generatedAt: new Date().toISOString(),
+    records: records.sort((a,b)=>a.ts-b.ts),
+    tasks, behaviors,
+    prices: { 'qwen3-30b-2507': 0.002, 'deepseek-v3-2508': 0.004 }, // ¥/1K tokens · 演示单价
+    umami: {
+      websiteId: 'demo', stats: {
+        pageviews: daily.reduce((a,b)=>a+b.pageviews,0), visitors: 6,
+        visits: daily.reduce((a,b)=>a+b.sessions,0), bounces: 9, totaltime: 61200,
+      },
+      daily, events: umamiEvents.sort((a,b)=>a.ts-b.ts),
+    },
+  };
+}
+const DEMO = genDemo();
+const dataset = () => state.src === 'demo' ? DEMO : window.__DATA__;
+
+/* ================= 工具 ================= */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtK = n => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+const fmtMs = n => n == null ? '—' : n >= 1000 ? (n/1000).toFixed(1)+'s' : Math.round(n)+'ms';
+const fmtPct = n => n == null ? '—' : Math.round(n*100)+'%';
+const fmtYuan = n => n == null ? '—' : n >= 100 ? '¥'+Math.round(n) : '¥'+n.toFixed(2);
+const fmtTs = ts => new Date(ts).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+const dkey = ts => { const d = new Date(ts); return (d.getMonth()+1)+'/'+d.getDate(); };
+const dayLabel = isoDate => Number(isoDate.slice(5,7))+'/'+Number(isoDate.slice(8,10));
+const shortId = id => (id||'').slice(0,8);
+const $ = (sel, el=document) => el.querySelector(sel);
+
+/* ================= 聚合 ================= */
+const tokensOf = r => { const u = r.usage||{};
+  return (u.inputTokens||0)+(u.outputTokens||0)+(u.cacheReadTokens||0)+(u.cacheWriteTokens||0)+(u.reasoningTokens||0); };
+
+function agg(opt = {}) {
+  const { creator = null } = opt;
+  const ds = dataset();
+  const from = state.range === 'all' ? -Infinity
+    : state.range === '1' ? new Date().setHours(0,0,0,0)
+    : Date.now() - 7*864e5;
+  const recs = ds.records.filter(r => r.ts >= from && (!creator || r.creator === creator));
+  const llm = recs.filter(r => r.kind === 'llm_call');
+  const sess = recs.filter(r => r.kind === 'session_created');
+  const turns = recs.filter(r => r.kind === 'turn_end');
+  const events = (ds.umami?.events || []).filter(e => e.ts >= from && (!creator || e.creator === creator));
+  const daily = (ds.umami?.daily || []).filter(d => Date.parse(d.x + 'T23:59:59') >= from);
+  const tasks = (ds.tasks || []).filter(t => t.created >= from && (!creator || t.creator === creator));
+  const behaviors = (ds.behaviors || []).filter(b => b.ts >= from && (!creator || b.creator === creator));
+
+  // 连续日桶
+  let days = [], byDay = {};
+  if (recs.length) {
+    let t0 = Math.min(...recs.map(r=>r.ts)), t1 = Math.max(...recs.map(r=>r.ts));
+    const d0 = new Date(t0); d0.setHours(0,0,0,0);
+    for (let t = d0.getTime(); t <= t1; t += 864e5) {
+      const k = dkey(t);
+      days.push(k);
+      byDay[k] = { beh:0, sys:0, in:0, out:0, cr:0, cw:0, rs:0, calls:0, lat:0,
+                   active:new Set(), wasteTok:0, totTok:0, taskNew:0, taskOk:0 };
+    }
+  }
+  for (const r of recs) {
+    const b = byDay[dkey(r.ts)]; if (b && r.creator) b.active.add(r.creator);
+  }
+  for (const r of llm) {
+    const b = byDay[dkey(r.ts)]; if (!b) continue;
+    const u = r.usage || {};
+    const tot = tokensOf(r);
+    if (r.purpose === 'behavior') b.beh += tot; else b.sys += tot;
+    b.in += u.inputTokens||0; b.out += u.outputTokens||0; b.cr += u.cacheReadTokens||0;
+    b.cw += u.cacheWriteTokens||0; b.rs += u.reasoningTokens||0;
+    b.calls++; b.lat += r.latencyMs||0; b.totTok += tot;
+  }
+  for (const t of tasks) {
+    const b = byDay[dkey(t.created)]; if (!b) continue;
+    b.taskNew++; if (t.success) b.taskOk++;
+  }
+
+  const tokensTotal = llm.reduce((a,r)=>a+tokensOf(r),0);
+  const tokensBeh = llm.filter(r=>r.purpose==='behavior').reduce((a,r)=>a+tokensOf(r),0);
+  const tokensSys = tokensTotal - tokensBeh;
+
+  // 模型
+  const byModel = new Map();
+  for (const r of llm) {
+    if (!byModel.has(r.model)) byModel.set(r.model, { model:r.model, provider:r.provider, calls:0, tokens:0, lat:0 });
+    const m = byModel.get(r.model);
+    m.calls++; m.tokens += tokensOf(r); m.lat += r.latencyMs||0;
+  }
+
+  // 创作者
+  const byCreator = new Map();
+  for (const r of recs) {
+    if (!r.creator) continue;
+    if (!byCreator.has(r.creator)) byCreator.set(r.creator, { id:r.creator, tokens:0, calls:0, sessions:new Set(), turns:0, fails:0, last:0, activeDays:new Set() });
+    const c = byCreator.get(r.creator);
+    c.last = Math.max(c.last, r.ts);
+    c.activeDays.add(dkey(r.ts));
+    if (r.kind === 'session_created') c.sessions.add(r.sessionId);
+    if (r.kind === 'llm_call') { c.calls++; c.tokens += tokensOf(r); }
+    if (r.kind === 'turn_end') { c.turns++; if (r.reason && r.reason.kind !== 'completed') c.fails++; }
+  }
+
+  // turn 结局 + 按错误码
+  const outcome = { completed:0, 'llm-failure':0, interrupted:0, other:0 };
+  const failByCode = new Map();
+  for (const t of turns) {
+    const k = t.reason?.kind || 'other';
+    outcome[k] = (outcome[k]||0) + 1;
+    if (k === 'llm-failure') {
+      const code = t.reason?.code || 'unknown';
+      failByCode.set(code, (failByCode.get(code)||0) + 1);
+    }
+  }
+  const turnRate = turns.length ? outcome.completed/turns.length : null;
+
+  // 浪费率：llm_call 归属到同 session 内其后最近的 turn_end，失败 turn 的 token ÷ 总 token
+  let wasteTok = 0;
+  {
+    const endsBySession = new Map();
+    for (const t of turns) {
+      if (!endsBySession.has(t.sessionId)) endsBySession.set(t.sessionId, []);
+      endsBySession.get(t.sessionId).push(t);
+    }
+    for (const list of endsBySession.values()) list.sort((a,b)=>a.ts-b.ts);
+    for (const r of llm) {
+      const ends = endsBySession.get(r.sessionId);
+      if (!ends || !ends.length) continue;
+      const end = ends.find(e => e.ts >= r.ts) || ends[ends.length-1];
+      const failed = end.reason && end.reason.kind !== 'completed';
+      if (failed) {
+        wasteTok += tokensOf(r);
+        const b = byDay[dkey(r.ts)]; if (b) b.wasteTok += tokensOf(r);
+      }
+    }
+  }
+  const wasteRate = tokensTotal ? wasteTok/tokensTotal : null;
+
+  // 漏斗（契约①③ 未建的级为 null → 灰条占位）
+  const tasksDone = tasks.filter(t=>t.success).length;
+  const funnel = [
+    { name:'访问', value: daily.reduce((a,d)=>a+d.pageviews,0) },
+    { name:'New Session', value: sess.length },
+    { name:'创建任务', value: ds.tasks ? tasks.length : null, dep:'契约①' },
+    { name:'生成完成', value: ds.tasks ? tasksDone : null, dep:'契约①' },
+    { name:'story 交付', value: ds.tasks ? tasksDone : null, dep:'契约③' },
+  ];
+
+  // 题材热度（demo）：后半窗口 vs 前半窗口环比
+  let topicRank = null;
+  if (ds.tasks) {
+    const mid = tasks.length ? tasks[0].created + (tasks[tasks.length-1].created - tasks[0].created)/2 : 0;
+    const byTopic = new Map();
+    for (const t of tasks) {
+      if (!byTopic.has(t.topic)) byTopic.set(t.topic, { topic:t.topic, first:0, second:0 });
+      byTopic.get(t.topic)[t.created < mid ? 'first' : 'second']++;
+    }
+    topicRank = [...byTopic.values()].map(t => ({
+      topic: t.topic, count: t.first + t.second,
+      delta: t.first ? (t.second - t.first)/t.first : null,
+    })).sort((a,b)=>b.count-a.count);
+  }
+
+  // 成本（demo：单价表为演示值）
+  let costByModel = null, costTotal = null;
+  if (ds.prices) {
+    costByModel = [...byModel.values()].map(m => ({
+      model: m.model, cost: m.tokens/1000 * (ds.prices[m.model] || 0), tokens: m.tokens,
+    })).sort((a,b)=>b.cost-a.cost);
+    costTotal = costByModel.reduce((a,m)=>a+m.cost,0);
+  }
+
+  // 画像（demo：行为五大类占比 + 具体行为 TopN）
+  let behaviorShare = null, behaviorTopN = null;
+  if (ds.behaviors && behaviors.length) {
+    const byCat = new Map(), byName = new Map();
+    for (const b of behaviors) {
+      byCat.set(b.cat, (byCat.get(b.cat)||0) + 1);
+      const cur = byName.get(b.name) || { name:b.name, count:0, tokens:0 };
+      cur.count++; cur.tokens += b.tokens; byName.set(b.name, cur);
+    }
+    behaviorShare = [...byCat.entries()].map(([cat,count]) => ({ cat, count })).sort((a,b)=>b.count-a.count);
+    behaviorTopN = [...byName.values()].sort((a,b)=>b.tokens-a.tokens).slice(0,6);
+  }
+
+  // 媒体生成量 C5（demo：图按张、视频/合成按秒）
+  let mediaUnits = null;
+  {
+    const media = events.filter(e=>e.name==='media_job_confirmed');
+    if (media.length && media.some(e=>e.units)) {
+      mediaUnits = {
+        image: media.filter(e=>e.jobKind==='image').reduce((a,e)=>a+(e.units||0),0),
+        video: media.filter(e=>e.jobKind==='video').reduce((a,e)=>a+(e.units||0),0),
+        composition: media.filter(e=>e.jobKind==='composition').reduce((a,e)=>a+(e.units||0),0),
+        jobs: media.length,
+      };
+    }
+  }
+
+  // 时间线
+  const timeline = [
+    ...recs.map(r => ({ ts:r.ts, src:'自建', creator:r.creator, sessionId:r.sessionId, kind:r.kind, rec:r })),
+    ...events.map(e => ({ ts:e.ts, src:'Umami', creator:e.creator, kind:'umami-event', ev:e })),
+  ].sort((a,b) => b.ts - a.ts);
+
+  const pv = daily.reduce((a,d)=>a+d.pageviews,0);
+  const visits = daily.reduce((a,d)=>a+d.sessions,0);
+  const activeCreators = new Set(recs.map(r=>r.creator).filter(Boolean)).size;
+  const todayKey = dkey(Date.now());
+  const activeToday = byDay[todayKey] ? byDay[todayKey].active.size : 0;
+
+  return {
+    ds, recs, llm, sess, turns, events, daily, days, byDay, byModel, byCreator, outcome, turnRate, timeline,
+    tokensTotal, tokensBeh, tokensSys, pv, visits, activeCreators, activeToday,
+    creators: [...byCreator.values()].sort((a,b)=>b.tokens-a.tokens),
+    mediaEvents: events.filter(e=>e.name==='media_job_confirmed'),
+    latencyAvg: llm.length ? llm.reduce((a,r)=>a+(r.latencyMs||0),0)/llm.length : null,
+    wasteRate, funnel, topicRank, costByModel, costTotal, behaviorShare, behaviorTopN, mediaUnits, failByCode,
+    perCapita: activeCreators ? tokensTotal/activeCreators : null,
+    cacheHit: (() => { let cr=0, inp=0; for (const d of days) { cr+=byDay[d].cr; inp+=byDay[d].in; } return inp ? cr/inp : null; })(),
+    delivered: ds.tasks ? tasksDone : null,
+    tasksCreated: ds.tasks ? tasks.length : null,
+  };
+}
+
+/* ================= ECharts 封装 ================= */
+let charts = [];
+function mkChart(el, option) {
+  const c = echarts.init(el); c.setOption(option); charts.push(c); return c;
+}
+function disposeCharts(){ charts.forEach(c=>c.dispose()); charts = []; }
+addEventListener('resize', () => charts.forEach(c=>c.resize()));
+
+function ttFormatter(params, fmt) {
+  if (typeof fmt !== 'function') fmt = fmtK;
+  const ps = params.filter(p => p.value != null && p.value !== '-');
+  if (!ps.length) return '';
+  const rows = ps.map(p =>
+    `<div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+       <b style="min-width:3.5em;text-align:right">${esc(fmt(p.value))}</b>
+       <span style="width:10px;height:3px;border-radius:2px;background:${p.color};display:inline-block"></span>
+       <span style="color:${T().ink2}">${esc(p.seriesName ?? p.name)}</span>
+     </div>`).join('');
+  return `<div style="font-size:12px;color:${T().muted};margin-bottom:2px">${esc(ps[0].axisValue ?? ps[0].name)}</div>${rows}`;
+}
+const gridOpt = () => ({ left: 6, right: 14, top: 34, bottom: 4, containLabel: true });
+const catAxis = data => ({ type:'category', data, axisLine:{ lineStyle:{ color:T().axis } }, axisTick:{ show:false },
+  axisLabel:{ color:T().muted, fontSize:11 } });
+const valAxis = (unit='') => ({ type:'value', splitLine:{ lineStyle:{ color:T().grid, width:1 } },
+  axisLabel:{ color:T().muted, fontSize:11, formatter: v => fmtK(v) + unit } });
+const hValAxis = () => ({ type:'value', splitLine:{ lineStyle:{ color:T().grid, width:1 } },
+  axisLabel:{ color:T().muted, fontSize:11, formatter: v => fmtK(v) } });
+const hCatAxis = data => ({ type:'category', data, axisLine:{ lineStyle:{ color:T().axis } }, axisTick:{ show:false },
+  axisLabel:{ color:T().muted, fontSize:11 } });
+const tooltipOpt = () => ({ trigger:'axis', axisPointer:{ type:'line', lineStyle:{ color:T().axis } },
+  backgroundColor:T().surface, borderColor:T().grid, borderWidth:1, padding:[8,12],
+  textStyle:{ color:T().ink, fontSize:12 } });
+const legendOpt = () => ({ top: 0, right: 0, itemWidth: 14, itemHeight: 8, itemGap: 14,
+  textStyle:{ color:T().ink2, fontSize:11 } });
+
+function barStack(el, days, series) {
+  const t = T();
+  series.forEach((s,i) => { if (!s.color) s.color = t.series[i % t.series.length]; });
+  mkChart(el, {
+    grid: gridOpt(), tooltip: { ...tooltipOpt(), formatter: ttFormatter },
+    legend: legendOpt(),
+    xAxis: catAxis(days), yAxis: valAxis(),
+    series: series.map((s,i) => ({
+      name:s.name, type:'bar', stack:'t', barMaxWidth: 22,
+      itemStyle: { color:s.color, borderColor:t.surface, borderWidth:1,
+        borderRadius: i === series.length-1 ? [4,4,0,0] : 0 },
+      data: s.data,
+    })),
+  });
+}
+function barSingle(el, cats, values, { color, fmt = fmtK, unit = '' } = {}) {
+  const t = T();
+  mkChart(el, {
+    grid: gridOpt(), tooltip: { ...tooltipOpt(), formatter: p => ttFormatter(p, fmt) },
+    xAxis: catAxis(cats), yAxis: valAxis(unit),
+    series: [{ type:'bar', barMaxWidth: 22,
+      itemStyle: { color, borderRadius:[4,4,0,0] },
+      label: { show:true, position:'top', color:t.ink2, fontSize:11, formatter: p => fmt(p.value) },
+      data: values }],
+  });
+}
+function barH(el, cats, values, { color, fmt = fmtK, labelFmt } = {}) {
+  const t = T();
+  mkChart(el, {
+    grid: { left: 6, right: 84, top: 10, bottom: 4, containLabel: true },
+    tooltip: { ...tooltipOpt(), formatter: p => ttFormatter(p, fmt) },
+    xAxis: hValAxis(), yAxis: hCatAxis(cats),
+    series: [{ type:'bar', barMaxWidth: 18,
+      itemStyle: { color, borderRadius:[0,4,4,0] },
+      label: { show:true, position:'right', color:t.ink2, fontSize:11, formatter: p => (labelFmt||fmt)(p.value) },
+      data: values }],
+  });
+}
+function lineChart(el, days, series, { fmt } = {}) {
+  const t = T();
+  mkChart(el, {
+    grid: gridOpt(), tooltip: { ...tooltipOpt(), formatter: p => ttFormatter(p, fmt) },
+    legend: series.length > 1 ? legendOpt() : undefined,
+    xAxis: catAxis(days), yAxis: valAxis(),
+    series: series.map((s,i) => ({
+      name:s.name, type:'line', data:s.data,
+      lineStyle:{ width:2, cap:'round', join:'round' },
+      symbol:'circle', symbolSize:8,
+      itemStyle:{ color:s.color || t.series[i], borderColor:t.surface, borderWidth:2 },
+      emphasis:{ focus:'series' },
+    })),
+  });
+}
+function donut(el, items) { // items: [{name, value}] ≤6 段，部分-整体
+  const t = T();
+  mkChart(el, {
+    tooltip: { trigger:'item', backgroundColor:t.surface, borderColor:t.grid, borderWidth:1,
+      padding:[8,12], textStyle:{ color:t.ink, fontSize:12 },
+      formatter: p => `<b>${esc(fmtK(p.value))}</b> <span style="color:${t.ink2}">${esc(p.name)} · ${p.percent}%</span>` },
+    legend: { ...legendOpt(), top: 'middle', right: 0, orient: 'vertical' },
+    series: [{ type:'pie', radius:['52%','76%'], center:['36%','50%'],
+      itemStyle:{ borderColor:t.surface, borderWidth:2 },
+      label:{ show:false }, emphasis:{ scaleSize:4 },
+      data: items.map((it,i) => ({ name:it.name, value:it.value, itemStyle:{ color:t.series[i % t.series.length] } })) }],
+  });
+}
+
+/* ================= 组件 ================= */
+function card({ title, sub, table, badge = null, bodyHTML = '' }) {
+  const el = document.createElement('section');
+  el.className = 'card';
+  el.innerHTML = `
+    <div class="card-head">
+      <h2>${esc(title)}</h2>${sub ? `<span class="sub">${esc(sub)}</span>` : ''}
+      ${badge ? `<span class="demo-badge">${esc(badge)}</span>` : ''}
+      ${table ? '<button type="button" class="tbl-btn">表格</button>' : ''}
+    </div>
+    <div class="card-body">${bodyHTML}</div>`;
+  if (table) {
+    const body = $('.card-body', el);
+    $('.tbl-btn', el).addEventListener('click', ev => {
+      const btn = ev.currentTarget;
+      const existing = $('.twin-wrap', el);
+      if (existing) { existing.remove(); btn.textContent = '表格'; return; }
+      const wrap = document.createElement('div');
+      wrap.className = 'twin-wrap';
+      const t = table();
+      const rows = t.rows.map(r => `<tr>${r.map((c,i) => `<td${t.nums && t.nums[i] ? ' class="num"' : ''}>${c}</td>`).join('')}</tr>`).join('');
+      wrap.innerHTML = `<table class="twin">
+        <thead><tr>${t.headers.map((h,i) => `<th${t.nums && t.nums[i] ? ' class="num"' : ''}>${esc(h)}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody></table>`;
+      body.appendChild(wrap);
+      btn.textContent = '图表';
+    });
+  }
+  return el;
+}
+function tile(label, valueHTML, detailHTML = '', { hero = false, na = false } = {}) {
+  const el = document.createElement('div');
+  el.className = 'tile' + (hero ? ' hero' : '') + (na ? ' na' : '');
+  el.innerHTML = `<div class="label">${esc(label)}</div><div class="value">${valueHTML}</div>${detailHTML ? `<div class="detail">${detailHTML}</div>` : ''}`;
+  return el;
+}
+function naTile(label, dep) {
+  return tile(label, '—', `<span style="border:1px dashed var(--axis);border-radius:999px;padding:0 8px;font-size:10.5px">待建 · ${esc(dep)}</span>`, { na: true });
+}
+function meterHTML(rate, label, { invert = false, threshold = null } = {}) {
+  const pct = rate == null ? 0 : Math.round(rate*100);
+  let cls = '';
+  if (rate != null) {
+    const bad = invert ? rate >= (threshold ?? 0.15) : rate < 0.7;
+    const mid = invert ? rate >= (threshold ?? 0.15)*0.6 : rate < 0.9;
+    cls = bad ? 'crit' : mid ? 'warn' : '';
+  }
+  return `<div class="meter-row"><span class="v">${rate == null ? '—' : pct + '%'}</span><span class="l">${esc(label)}</span></div>
+    <div class="meter"><div class="meter-fill ${cls}" style="width:${Math.min(100,pct)}%"></div></div>`;
+}
+function placeholderCard({ title, dep, desc, sub }) {
+  return card({ title, sub,
+    bodyHTML: `<div class="ph"><span class="ph-dep">待建 · ${esc(dep)}</span><p>${esc(desc)}</p></div>` });
+}
+function emptyBox(title, hint) {
+  return `<div class="empty"><b>${esc(title)}</b>${esc(hint)}</div>`;
+}
+function funnelHTML(stages) {
+  const t = T();
+  const max = Math.max(1, ...stages.map(s => s.value || 0));
+  return `<div class="funnel">` + stages.map((s, i) => {
+    if (s.value == null) {
+      return `<div class="fn-row"><span class="fn-name">${esc(s.name)}</span>
+        <div class="fn-bar na" style="width:100%"></div>
+        <span class="fn-val"><span class="todo">待${esc(s.dep)}</span></span></div>`;
+    }
+    const conv = i > 0 && stages[i-1].value ? ` <span class="conv">↓ ${Math.round(s.value/stages[i-1].value*100)}%</span>` : '';
+    return `<div class="fn-row"><span class="fn-name">${esc(s.name)}</span>
+      <div class="fn-bar" style="width:${Math.max(2, s.value/max*100)}%;background:${t.funnel[i]}"></div>
+      <span class="fn-val">${esc(fmtK(s.value))}${conv}</span></div>`;
+  }).join('') + `</div>`;
+}
+
+/* ================= 总览页签 ================= */
+function renderOverview(a, view) {
+  // ---- L0 北极星 ----
+  view.appendChild(secTitle('L0 · 北极星'));
+  const l0 = document.createElement('section');
+  l0.className = 'kpi-row l0';
+  l0.appendChild(tile('日活跃创作者（U3）', String(a.activeToday),
+    `口径：当日有任一记录 · 契约①后按行为事件计 · 范围内活跃 ${a.activeCreators}`, { hero: true }));
+  if (a.costTotal != null && a.delivered) {
+    l0.appendChild(tile('单交付剧本全链路成本', fmtYuan(a.costTotal/a.delivered),
+      `${fmtYuan(a.costTotal)} ÷ ${a.delivered} 交付 · 演示单价`, { hero: true }));
+  } else {
+    const t = naTile('单交付剧本全链路成本', '契约①+④'); t.classList.add('hero'); l0.appendChild(t);
+  }
+  const waste = tile('Token 浪费率', a.wasteRate == null ? '—' : (a.wasteRate*100).toFixed(1)+'%',
+    '', { hero: true });
+  waste.querySelector('.detail');
+  waste.insertAdjacentHTML('beforeend',
+    `<div class="detail">失败 turn 消耗 ÷ 总消耗 · 告警线 15%</div>
+     <div class="meter"><div class="meter-fill ${a.wasteRate!=null&&a.wasteRate>=0.15?'crit':a.wasteRate!=null&&a.wasteRate>=0.09?'warn':''}" style="width:${a.wasteRate==null?0:Math.min(100,a.wasteRate*100/0.15*100/2)}%"></div></div>`);
+  l0.appendChild(waste);
+  view.appendChild(l0);
+
+  // ---- L1 一级指标 ----
+  view.appendChild(secTitle('L1 · 一级指标'));
+  const l1 = document.createElement('section');
+  l1.className = 'kpi-row l1';
+  l1.appendChild(tile('活跃创作者', fmtK(a.activeCreators), `DAU 口径 · WAU/MAU 待多日数据`));
+  l1.appendChild(a.ds.tasks ? tile('任务成功率', fmtPct(a.tasksCreated ? a.delivered/a.tasksCreated : null), `交付 ${a.delivered}/${a.tasksCreated}`)
+    : naTile('任务成功率', '契约①'));
+  l1.appendChild(a.ds.tasks ? tile('次留 / 7留', '—', 'demo 未模拟留存') : naTile('次留 / 7留', '契约①'));
+  l1.appendChild(tile('日总 Tokens', fmtK(a.tokensTotal), `行为 ${fmtK(a.tokensBeh)} · 系统 C3 ${fmtK(a.tokensSys)}`));
+  l1.appendChild(tile('人均 Tokens', fmtK(a.perCapita && Math.round(a.perCapita)), `÷ ${a.activeCreators} 活跃创作者`));
+  l1.appendChild(naTile('高价值用户占比', 'P2 画像'));
+  view.appendChild(l1);
+
+  if (!a.recs.length) {
+    const c = card({ title:'暂无数据' });
+    c.querySelector('.card-body').innerHTML = emptyBox('该时间范围内没有记录', '换个时间范围，或切到「模拟数据」预览看板形态。');
+    view.appendChild(c); return;
+  }
+
+  // ---- P1 8 图 ----
+  view.appendChild(secTitle('P1 · 看板 8 图（设计文档 §8.5 验收清单）'));
+  const demoTag = state.src === 'demo' ? '演示' : null;
+
+  const g1 = document.createElement('div'); g1.className = 'grid-2';
+  g1.appendChild(card({
+    title:'① DAU 曲线', sub:'活跃创作者/日',
+    bodyHTML:'<div class="chart-box" data-chart="dau"></div>',
+    table: () => ({ headers:['日期','活跃创作者'], nums:[false,true],
+      rows: a.days.map(d => [d, a.byDay[d].active.size]) }),
+  }));
+  g1.appendChild(card({
+    title:'② 创作漏斗', sub:'访问 → New Session → 创建任务 → 生成完成 → story 交付',
+    badge: a.ds.tasks ? demoTag : null,
+    bodyHTML: funnelHTML(a.funnel),
+    table: () => ({ headers:['阶段','数量'], nums:[false,true],
+      rows: a.funnel.map(s => [s.name, s.value == null ? `待${s.dep}` : s.value]) }),
+  }));
+  view.appendChild(g1);
+
+  const g2 = document.createElement('div'); g2.className = 'grid-2';
+  if (a.ds.tasks) {
+    g2.appendChild(card({
+      title:'③ 任务成功率', sub:'成功完结 ÷ 创建 · 按日', badge: demoTag,
+      bodyHTML:'<div class="chart-box" data-chart="task-rate"></div>',
+      table: () => ({ headers:['日期','成功率','创建/交付'], nums:[false,true,true],
+        rows: a.days.map(d => { const b = a.byDay[d]; return [d, b.taskNew ? Math.round(b.taskOk/b.taskNew*100)+'%' : '—', b.taskOk+'/'+b.taskNew]; }) }),
+    }));
+  } else {
+    g2.appendChild(placeholderCard({ title:'③ 任务成功率', dep:'契约①',
+      desc:'成功完结任务数 ÷ 创建任务数（按日/题材）。需要行为事件表建立任务实体。' }));
+  }
+  {
+    const models = [...a.byModel.values()].sort((x,y)=>y.tokens-x.tokens);
+    g2.appendChild(card({
+      title:'④ Token 榜', sub:'模型等价 Token 总量及占比',
+      bodyHTML:'<div class="chart-box" data-chart="token-rank"></div>',
+      table: () => ({ headers:['模型','Token','占比'], nums:[false,true,true],
+        rows: models.map(m => [m.model, fmtK(m.tokens), a.tokensTotal ? Math.round(m.tokens/a.tokensTotal*100)+'%' : '—']) }),
+    }));
+  }
+  view.appendChild(g2);
+
+  const g3 = document.createElement('div'); g3.className = 'grid-2';
+  if (a.costByModel) {
+    g3.appendChild(card({
+      title:'⑤ 成本榜', sub:'模型成本（演示单价）', badge: demoTag,
+      bodyHTML:'<div class="chart-box" data-chart="cost-rank"></div>',
+      table: () => ({ headers:['模型','成本','Token'], nums:[false,true,true],
+        rows: a.costByModel.map(m => [m.model, fmtYuan(m.cost), fmtK(m.tokens)]) }),
+    }));
+  } else {
+    g3.appendChild(placeholderCard({ title:'⑤ 成本榜', dep:'契约④ 单价表',
+      desc:'模型 × 计量维度 → 单价（版本化，历史不重算）。表建好后 M1–M3 全部解锁。' }));
+  }
+  g3.appendChild(card({
+    title:'⑥ 浪费率曲线', sub:'失败 turn Token ÷ 总 Token · 按日 · 告警线 15%',
+    bodyHTML:'<div class="chart-box" data-chart="waste"></div>',
+    table: () => ({ headers:['日期','浪费率'], nums:[false,true],
+      rows: a.days.map(d => { const b = a.byDay[d]; return [d, b.totTok ? (b.wasteTok/b.totTok*100).toFixed(1)+'%' : '—']; }) }),
+  }));
+  view.appendChild(g3);
+
+  const g4 = document.createElement('div'); g4.className = 'grid-2';
+  g4.appendChild(placeholderCard({ title:'⑦ 401 曲线', dep:'自建登录体系',
+    desc:'决策 D6：harness webserver 无请求事件，401 对插件不可见。将来插件自建登录/用户管理上线后纳入（含登录成功率、爆破检测）。' }));
+  if (a.topicRank) {
+    g4.appendChild(card({
+      title:'⑧ 题材热度榜', sub:'任务量 · 后半窗口环比', badge: demoTag,
+      bodyHTML:'<div class="chart-box" data-chart="topics"></div>',
+      table: () => ({ headers:['题材','任务量','环比'], nums:[false,true,true],
+        rows: a.topicRank.map(t => [t.topic, t.count, t.delta == null ? '—' : (t.delta>=0?'+':'')+Math.round(t.delta*100)+'%']) }),
+    }));
+  } else {
+    g4.appendChild(placeholderCard({ title:'⑧ 题材热度榜', dep:'契约①',
+      desc:'各题材任务量及环比（日/周）。题材参数随行为事件 meta 落表。' }));
+  }
+  view.appendChild(g4);
+
+  // ---- Token 附加 ----
+  view.appendChild(secTitle('Token · 附加指标'));
+  const g5 = document.createElement('div'); g5.className = 'grid-3';
+  g5.appendChild(card({
+    title:'五桶构成按天', sub:'输入 / 输出 / 缓存读 / 缓存写 / 推理',
+    bodyHTML:'<div class="chart-box" data-chart="buckets"></div>',
+    table: () => ({ headers:['日期','输入','输出','缓存读','缓存写','推理'], nums:[false,true,true,true,true,true],
+      rows: a.days.map(d => { const b = a.byDay[d]; return [d, fmtK(b.in), fmtK(b.out), fmtK(b.cr), fmtK(b.cw), fmtK(b.rs)]; }) }),
+  }));
+  g5.appendChild(card({
+    title:'缓存命中率', sub:'缓存读 ÷ 总输入 · 降本关键（§9.2-A）',
+    bodyHTML:'<div class="chart-box" data-chart="cache"></div>',
+    table: () => ({ headers:['日期','命中率'], nums:[false,true],
+      rows: a.days.map(d => { const b = a.byDay[d]; return [d, b.in ? (b.cr/b.in*100).toFixed(1)+'%' : '—']; }) }),
+  }));
+  const models = [...a.byModel.values()].sort((x,y)=>y.calls-x.calls);
+  g5.appendChild(card({
+    title:'模型 × 平均延迟', sub:'每次调用',
+    bodyHTML:'<div class="chart-box" data-chart="model-lat"></div>',
+    table: () => ({ headers:['模型','平均延迟','调用'], nums:[false,true,true],
+      rows: models.map(m => [m.model, fmtMs(m.lat/m.calls), m.calls]) }),
+  }));
+  view.appendChild(g5);
+
+  // ---- 流量与媒体 ----
+  view.appendChild(secTitle('流量与媒体'));
+  const g6 = document.createElement('div'); g6.className = 'grid-3';
+  g6.appendChild(card({
+    title:'Umami 流量', sub:'PV / 访问（按日）',
+    bodyHTML:'<div class="chart-box" data-chart="pv"></div>',
+    table: () => ({ headers:['日期','PV','访问'], nums:[false,true,true],
+      rows: a.daily.map(d => [dayLabel(d.x), d.pageviews, d.sessions]) }),
+  }));
+  if (a.mediaUnits) {
+    g6.appendChild(card({
+      title:'媒体生成量 C5', sub:`${a.mediaUnits.jobs} 个任务确认（Umami）`, badge: demoTag,
+      bodyHTML:`<div style="display:flex;gap:22px;padding:18px 6px;flex-wrap:wrap">
+        <div><div style="font-size:24px;font-weight:600">${a.mediaUnits.image}</div><div style="font-size:12px;color:var(--muted)">图像 · 张</div></div>
+        <div><div style="font-size:24px;font-weight:600">${a.mediaUnits.video}s</div><div style="font-size:12px;color:var(--muted)">视频 · 秒</div></div>
+        <div><div style="font-size:24px;font-weight:600">${a.mediaUnits.composition}s</div><div style="font-size:12px;color:var(--muted)">合成 · 秒</div></div>
+      </div><p class="note">契约③：runs JSON 补 creator 归因后按人/按日切片</p>`,
+    }));
+  } else {
+    g6.appendChild(placeholderCard({ title:'媒体生成量 C5', dep:'契约③',
+      desc:'图像按张、视频/音乐按秒分列。runs JSON 已有数据，补 creator 归因字段即可解锁。' }));
+  }
+  g6.appendChild(card({
+    title:'失败按错误码', sub:'turn_end · llm-failure',
+    bodyHTML: a.failByCode.size ? '<div class="chart-box" data-chart="failcode"></div>'
+      : emptyBox('范围内没有失败', '出现 llm-failure 后按错误码分布。'),
+  }));
+  view.appendChild(g6);
+
+  // ---- 图表渲染 ----
+  lineChart($('[data-chart="dau"]'), a.days, [
+    { name:'活跃创作者', data: a.days.map(d=>a.byDay[d].active.size), color: T().series[0] },
+  ]);
+  if (a.ds.tasks) lineChart($('[data-chart="task-rate"]'), a.days, [
+    { name:'任务成功率', data: a.days.map(d => { const b = a.byDay[d]; return b.taskNew ? Math.round(b.taskOk/b.taskNew*100) : null; }), color: T().series[0] },
+  ], { fmt: v => v + '%' });
+  {
+    const models2 = [...a.byModel.values()].sort((x,y)=>y.tokens-x.tokens).reverse();
+    barH($('[data-chart="token-rank"]'), models2.map(m=>m.model), models2.map(m=>m.tokens),
+      { color: T().series[0], labelFmt: v => fmtK(v) + (a.tokensTotal ? ' · ' + Math.round(v/a.tokensTotal*100) + '%' : '') });
+  }
+  if (a.costByModel) barH($('[data-chart="cost-rank"]'),
+    a.costByModel.slice().reverse().map(m=>m.model), a.costByModel.slice().reverse().map(m=>Math.round(m.cost*100)/100),
+    { color: T().series[0], fmt: fmtYuan, labelFmt: fmtYuan });
+  {
+    const t = T();
+    mkChart($('[data-chart="waste"]'), {
+      grid: gridOpt(), tooltip: { ...tooltipOpt(), formatter: p => ttFormatter(p, v => v + '%') },
+      xAxis: catAxis(a.days), yAxis: valAxis(),
+      series: [{ name:'浪费率', type:'line',
+        data: a.days.map(d => { const b = a.byDay[d]; return b.totTok ? Math.round(b.wasteTok/b.totTok*1000)/10 : 0; }),
+        lineStyle:{ width:2, cap:'round', join:'round' }, symbol:'circle', symbolSize:8,
+        itemStyle:{ color:t.series[1], borderColor:t.surface, borderWidth:2 },
+        markLine: { silent:true, symbol:'none', data:[{ yAxis:15 }],
+          lineStyle:{ color:t.crit, width:1, type:'solid' },
+          label:{ show:true, position:'insideEndTop', formatter:'告警线 15%', color:t.crit, fontSize:10 } },
+      }],
+    });
+  }
+  if (a.topicRank) barH($('[data-chart="topics"]'),
+    a.topicRank.slice().reverse().map(t=>t.topic), a.topicRank.slice().reverse().map(t=>t.count),
+    { color: T().series[0], labelFmt: (v, p) => String(v) });
+  barStack($('[data-chart="buckets"]'), a.days, [
+    { name:'输入', data: a.days.map(d=>a.byDay[d].in) },
+    { name:'输出', data: a.days.map(d=>a.byDay[d].out) },
+    { name:'缓存读', data: a.days.map(d=>a.byDay[d].cr) },
+    { name:'缓存写', data: a.days.map(d=>a.byDay[d].cw) },
+    { name:'推理', data: a.days.map(d=>a.byDay[d].rs) },
+  ]);
+  lineChart($('[data-chart="cache"]'), a.days, [
+    { name:'缓存命中率', data: a.days.map(d => { const b = a.byDay[d]; return b.in ? Math.round(b.cr/b.in*1000)/10 : null; }), color: T().series[2] },
+  ], { fmt: v => v + '%' });
+  barSingle($('[data-chart="model-lat"]'), models.map(m=>m.model), models.map(m=>Math.round(m.lat/m.calls)), { color: T().series[0], fmt: fmtMs });
+  lineChart($('[data-chart="pv"]'), a.daily.map(d=>dayLabel(d.x)), [
+    { name:'PV', data: a.daily.map(d=>d.pageviews), color: T().series[0] },
+    { name:'访问', data: a.daily.map(d=>d.sessions), color: T().series[1] },
+  ]);
+  if (a.failByCode.size) {
+    const fc = [...a.failByCode.entries()].sort((x,y)=>y[1]-x[1]);
+    barSingle($('[data-chart="failcode"]'), fc.map(x=>x[0]), fc.map(x=>x[1]), { color: T().crit });
+  }
+}
+function secTitle(text) {
+  const el = document.createElement('div');
+  el.className = 'sec'; el.textContent = text;
+  return el;
+}
+
+/* ================= 画像页签 ================= */
+function renderProfile(a, view) {
+  if (!a.creators.length) {
+    const c = card({ title:'创作者' });
+    c.querySelector('.card-body').innerHTML = emptyBox('该范围内没有创作者记录', '换个时间范围，或切到「模拟数据」预览看板形态。');
+    view.appendChild(c); return;
+  }
+  if (!state.creator || !a.creators.some(c=>c.id===state.creator)) state.creator = a.creators[0].id;
+
+  const layout = document.createElement('div'); layout.className = 'b-layout';
+  const spine = card({ title:'创作者排行', sub:'按 Token 消耗 · 点击下钻' });
+  const maxTok = a.creators[0].tokens || 1;
+  for (const [i,c] of a.creators.entries()) {
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'creator-row';
+    row.setAttribute('aria-pressed', String(c.id === state.creator));
+    row.title = c.id;
+    row.innerHTML = `
+      <div class="cr-top"><span class="cr-id">${i+1}. ${esc(shortId(c.id))}</span><span class="cr-tokens">${fmtK(c.tokens)} tok</span></div>
+      <div class="cr-bar"><i style="width:${Math.max(2, Math.round(c.tokens/maxTok*100))}%"></i></div>
+      <div class="cr-meta"><span>${c.sessions.size} 会话</span><span>${c.calls} 调用</span><span>${c.turns ? Math.round((c.turns-c.fails)/c.turns*100)+'%' : '—'} 成功率</span><span>活跃 ${c.activeDays.size} 天</span></div>`;
+    row.addEventListener('click', () => { state.creator = c.id; render(); });
+    spine.appendChild(row);
+  }
+  layout.appendChild(spine);
+
+  const b = agg({ creator: state.creator });
+  const detail = document.createElement('div');
+  const demoTag = state.src === 'demo' ? '演示' : null;
+
+  const kpis = document.createElement('section');
+  kpis.className = 'kpi-row c4';
+  kpis.appendChild(tile('Token 合计', fmtK(b.tokensTotal), `行为 ${fmtK(b.tokensBeh)} · 系统 ${fmtK(b.tokensSys)}`));
+  kpis.appendChild(tile('AI 调用', fmtK(b.llm.length), `平均延迟 ${fmtMs(b.latencyAvg)}`));
+  kpis.appendChild(tile('会话', fmtK(b.sess.length), `活跃 ${b.activeCreators ? '' : ''}${[...a.creators.find(c=>c.id===state.creator).activeDays].length} 天`));
+  kpis.appendChild(tile('Turn 成功率', meterHTML(b.turnRate, `完成 ${b.outcome.completed}/${b.turns.length}`)));
+  detail.appendChild(kpis);
+
+  // §9.5 画像视图：U2 五大类环图 + C1 集中行为 TopN
+  const g0 = document.createElement('div'); g0.className = 'grid-2';
+  if (b.behaviorShare) {
+    g0.appendChild(card({
+      title:'行为分布画像 · U2 五大类占比', sub:`${shortId(state.creator)}`, badge: demoTag,
+      bodyHTML:'<div class="chart-box" data-chart="p-share"></div>',
+      table: () => ({ headers:['大类','次数'], nums:[false,true],
+        rows: b.behaviorShare.map(s => [s.cat, s.count]) }),
+    }));
+    g0.appendChild(card({
+      title:'C1 集中行为 TopN', sub:'按行为 Token 消耗', badge: demoTag,
+      bodyHTML:'<div class="chart-box" data-chart="p-topn"></div>',
+      table: () => ({ headers:['行为','Token','次数'], nums:[false,true,true],
+        rows: b.behaviorTopN.map(s => [s.name, fmtK(s.tokens), s.count]) }),
+    }));
+  } else {
+    g0.appendChild(placeholderCard({ title:'行为分布画像 · U2 五大类占比', dep:'契约①',
+      desc:'行为事件表落表后，按创作者聚合五大类占比环图（§9.5 画像页签视图）。' }));
+    g0.appendChild(placeholderCard({ title:'C1 集中行为 TopN', dep:'契约①+②',
+      desc:'行为 Token 消耗 TopN 条形图：turn usage 经 behavior_id 关联到具体行为。' }));
+  }
+  detail.appendChild(g0);
+
+  const g = document.createElement('div'); g.className = 'grid-2';
+  g.appendChild(card({
+    title:'每日 Token 消耗', sub:`${shortId(state.creator)}`,
+    bodyHTML:'<div class="chart-box" data-chart="b-day"></div>',
+    table: () => ({ headers:['日期','行为','系统开销 C3'], nums:[false,true,true],
+      rows: b.days.map(d => [d, fmtK(b.byDay[d].beh), fmtK(b.byDay[d].sys)]) }),
+  }));
+  const bModels = [...b.byModel.values()].sort((x,y)=>y.tokens-x.tokens);
+  g.appendChild(card({
+    title:'模型分布', sub:'Token 按模型',
+    bodyHTML:'<div class="chart-box" data-chart="b-model"></div>',
+    table: () => ({ headers:['模型','Token','调用'], nums:[false,true,true],
+      rows: bModels.map(m => [m.model, fmtK(m.tokens), m.calls]) }),
+  }));
+  detail.appendChild(g);
+
+  const evList = state.src === 'real' ? a.events : b.events;
+  const evRows = evList.slice().reverse().map(e => {
+    const detail2 = [e.name, e.jobKind, e.device, e.browser].filter(Boolean).join(' · ');
+    return `<tr><td class="ts">${esc(fmtTs(e.ts))}</td><td><span class="src-badge">Umami</span></td><td>${esc(detail2)}</td><td class="num">${esc(e.url||'')}</td></tr>`;
+  }).join('');
+  const realHint = state.src === 'real'
+    ? '<p class="note">真实 Umami 事件尚未带 creator_id 属性（v1 正式上报后可按人对齐），此处暂列全部事件。</p>' : '';
+  detail.appendChild(card({
+    title:'Umami 事件（按 creator 对齐）', sub:'前端可见行为',
+    bodyHTML: `<div class="timeline" style="max-height:280px"><table class="twin">
+      <thead><tr><th>时间</th><th>来源</th><th>事件</th><th>路径</th></tr></thead>
+      <tbody>${evRows || '<tr><td colspan="4" style="color:var(--muted)">无对齐事件</td></tr>'}</tbody></table></div>${realHint}`,
+  }));
+
+  layout.appendChild(detail);
+  view.appendChild(layout);
+
+  if (b.behaviorShare) {
+    donut($('[data-chart="p-share"]'), b.behaviorShare.map(s => ({ name:s.cat, value:s.count })));
+    barH($('[data-chart="p-topn"]'),
+      b.behaviorTopN.slice().reverse().map(s=>s.name), b.behaviorTopN.slice().reverse().map(s=>s.tokens),
+      { color: T().series[0] });
+  }
+  barStack($('[data-chart="b-day"]'), b.days, [
+    { name:'行为', data: b.days.map(d=>b.byDay[d].beh), color: T().series[0] },
+    { name:'系统开销 C3', data: b.days.map(d=>b.byDay[d].sys), color: T().series[1] },
+  ]);
+  barSingle($('[data-chart="b-model"]'), bModels.map(m=>m.model), bModels.map(m=>m.tokens), { color: T().series[0] });
+}
+
+/* ================= 明细页签 ================= */
+function renderDetail(a, view) {
+  const meters = document.createElement('section');
+  meters.className = 'meters-row';
+  meters.appendChild(card({ title:'Turn 成功率', bodyHTML: meterHTML(a.turnRate, `完成 ${a.outcome.completed}/${a.turns.length}`) }));
+  const behShare = a.tokensTotal ? a.tokensBeh/a.tokensTotal : null;
+  meters.appendChild(card({ title:'行为 Token 占比', sub:'其余为系统开销 C3',
+    bodyHTML: meterHTML(behShare, `行为 ${fmtK(a.tokensBeh)} / 合计 ${fmtK(a.tokensTotal)}`) }));
+  const fails = a.outcome['llm-failure'] + a.outcome.interrupted;
+  meters.appendChild(card({ title:'失败 / 中断 / 延迟', bodyHTML: `
+    <div style="display:flex;gap:22px;margin-top:6px;flex-wrap:wrap">
+      <div><div style="font-size:22px;font-weight:600">${fails}</div><div style="font-size:12px;color:var(--muted)">失败 + 中断 turn</div></div>
+      <div><div style="font-size:22px;font-weight:600">${fmtMs(a.latencyAvg)}</div><div style="font-size:12px;color:var(--muted)">平均调用延迟</div></div>
+      <div><div style="font-size:22px;font-weight:600">${fmtK(a.mediaEvents.length)}</div><div style="font-size:12px;color:var(--muted)">媒体任务确认（Umami）</div></div>
+    </div>` }));
+  view.appendChild(meters);
+
+  const CAP = 300;
+  const rows = a.timeline.slice(0, CAP).map(e => {
+    let kind = '', detail = '', fail = false;
+    if (e.kind === 'umami-event') {
+      kind = e.ev.name;
+      detail = [e.ev.jobKind, e.ev.device, e.ev.browser, e.ev.url].filter(Boolean).join(' · ');
+    } else if (e.kind === 'session_created') {
+      kind = '会话创建'; detail = e.sessionId;
+    } else if (e.kind === 'llm_call') {
+      kind = 'LLM 调用';
+      const u = e.rec.usage || {};
+      detail = `${e.rec.purpose} · ${e.rec.model} · ${fmtK(u.inputTokens||0)} in / ${fmtK(u.outputTokens||0)} out · ${fmtMs(e.rec.latencyMs)}`;
+    } else if (e.kind === 'turn_end') {
+      kind = 'Turn 结束';
+      fail = e.rec.reason && e.rec.reason.kind !== 'completed';
+      detail = fail ? `第 ${e.rec.turn} 轮 · ${e.rec.reason.kind}${e.rec.reason.code ? ' '+e.rec.reason.code : ''}` : `第 ${e.rec.turn} 轮 · 完成`;
+    } else if (e.kind === 'assistant_message') {
+      kind = '回复完成'; detail = `turn ${e.rec.turn} · step ${e.rec.step}`;
+    } else { kind = e.kind; }
+    return `<tr${fail ? ' class="fail"' : ''}>
+      <td class="ts">${esc(fmtTs(e.ts))}</td>
+      <td><span class="src-badge">${esc(e.src)}</span></td>
+      <td title="${esc(e.creator||'')}">${esc(shortId(e.creator))}</td>
+      <td${fail ? ' style="color:var(--crit);font-weight:600"' : ''}>${fail ? '✕ ' : ''}${esc(kind)}</td>
+      <td style="white-space:normal">${esc(detail)}</td></tr>`;
+  }).join('');
+  view.appendChild(card({
+    title:'事件时间线', sub:`自建 + Umami 合并 · 倒序 · 共 ${a.timeline.length} 条${a.timeline.length > CAP ? `，显示前 ${CAP}` : ''}`,
+    bodyHTML: `<div class="timeline"><table class="tl">
+      <thead><tr><th>时间</th><th>来源</th><th>创作者</th><th>事件</th><th>详情</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" style="color:var(--muted)">该范围内没有事件</td></tr>'}</tbody></table></div>`,
+  }));
+
+  const g = document.createElement('div'); g.className = 'grid-2';
+  g.appendChild(card({
+    title:'平均调用延迟按天',
+    bodyHTML:'<div class="chart-box" data-chart="c-lat"></div>',
+    table: () => ({ headers:['日期','平均延迟','调用'], nums:[false,true,true],
+      rows: a.days.map(d => { const b = a.byDay[d]; return [d, fmtMs(b.calls?b.lat/b.calls:0), b.calls]; }) }),
+  }));
+  g.appendChild(turnCard(a));
+  view.appendChild(g);
+
+  lineChart($('[data-chart="c-lat"]'), a.days, [
+    { name:'平均延迟', data: a.days.map(d => { const b = a.byDay[d]; return b.calls ? Math.round(b.lat/b.calls) : null; }), color: T().series[0] },
+  ], { fmt: fmtMs });
+}
+
+function turnCard(a) {
+  const total = a.turns.length;
+  const parts = [
+    { k:'completed', label:'完成', color: T().good },
+    { k:'llm-failure', label:'模型失败', color: T().crit },
+    { k:'interrupted', label:'中断', color: T().serious },
+  ].filter(p => a.outcome[p.k] > 0);
+  const bars = parts.map(p =>
+    `<i style="flex:${a.outcome[p.k]};background:${p.color}"></i>`).join('');
+  const legend = parts.map(p =>
+    `<div class="st ${p.k==='completed'?'good':p.k==='interrupted'?'mid':'bad'}">${p.label} ${a.outcome[p.k]}</div>`).join('');
+  return card({
+    title:'Turn 结局', sub:`共 ${total} 轮`,
+    bodyHTML: `
+      <div class="st-list" style="margin-top:4px">
+        <div class="st-row"><div class="bar">${bars || '<i style="flex:1;background:var(--grid)"></i>'}</div></div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">${legend || '<span style="font-size:12px;color:var(--muted)">无 turn 记录</span>'}</div>
+      </div>`,
+    table: () => ({ headers:['结局','次数'], nums:[false,true],
+      rows: parts.map(p => [p.label, a.outcome[p.k]]) }),
+  });
+}
+
+/* ================= 渲染 & 路由 ================= */
+function render() {
+  document.documentElement.dataset.theme = state.theme;
+  disposeCharts();
+  const view = $('#view');
+  view.innerHTML = '';
+  const a = agg();
+  if (state.tab === 'overview') renderOverview(a, view);
+  else if (state.tab === 'profile') renderProfile(a, view);
+  else renderDetail(a, view);
+
+  const ds = dataset();
+  $('#scopeInfo').textContent = state.src === 'demo'
+    ? `模拟数据（种子 20260917 · 含契约①③④形态预览）· ${ds.records.length} 条记录`
+    : `生成于 ${new Date(ds.generatedAt).toLocaleString('zh-CN')} · ${ds.records.length} 条自建记录${ds.umami ? ' + Umami' : '（Umami 不可达）'}`;
+  for (const b of $('#tabs').children) b.setAttribute('aria-selected', String(b.dataset.tab === state.tab));
+  for (const b of $('#srcSeg').children) b.setAttribute('aria-pressed', String(b.dataset.src === state.src));
+  for (const b of $('#rangeSeg').children) b.setAttribute('aria-pressed', String(b.dataset.range === state.range));
+  pushUrl();
+}
+function pushUrl() {
+  const p = new URLSearchParams({ tab: state.tab, src: state.src, range: state.range, theme: state.theme });
+  history.replaceState(null, '', location.pathname + '?' + p);
+}
+
+$('#tabs').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  state.tab = b.dataset.tab; render();
+});
+$('#srcSeg').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  state.src = b.dataset.src; render();
+});
+$('#rangeSeg').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  state.range = b.dataset.range; render();
+});
+$('#themeBtn').addEventListener('click', () => {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark'; render();
+});
+
+render();
+</script>
+</body>
+</html>

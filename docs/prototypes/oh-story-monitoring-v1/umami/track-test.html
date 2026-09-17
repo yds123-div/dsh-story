@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE — Umami track() 直报测试页</title>
+<style>
+  body{font-family:system-ui,"Microsoft YaHei",sans-serif;max-width:640px;margin:40px auto;padding:0 20px;line-height:1.7;background:#f6f8fa}
+  button{font-size:15px;padding:8px 18px;margin:4px 8px 4px 0;cursor:pointer}
+  pre{background:#1f2733;color:#cde;padding:12px;border-radius:8px;overflow-x:auto;font-size:13px;min-height:40px}
+  .ok{color:#0a8a4d}.err{color:#cf3c3c}
+  .note{font-size:13px;color:#5b6675}
+</style>
+</head>
+<body>
+<h2>PROTOTYPE — Umami track() 直报测试</h2>
+<p class="note">
+  模拟 ui-oh-story 客户端里的 track() 封装：不加载官方 script.js，
+  直接 POST 到 Umami <code>/api/send</code>。这正是 spec §4.2 的路径 A。
+  页面本身从 file:// 打开——证明跨源上报可行。
+</p>
+<p>
+  <button onclick="trackPageview()">track() pageview</button>
+  <button onclick="trackEvent('session_created')">track() session_created</button>
+  <button onclick="trackEvent('media_job_confirmed', {jobKind:'video', genre:'玄幻'})">track() 带属性事件</button>
+</p>
+<pre id="log">（点击按钮后这里显示 Umami 的响应）</pre>
+
+<script>
+// —— 与将来 ui-oh-story 中 track() 同构的最小实现 ——
+const UMAMI_URL = 'http://127.0.0.1:3000';
+const WEBSITE_ID = '2d2df428-1c24-41b9-a6d7-ba83b98be3ed';
+// 真实环境里 creator_id 由 monitor 插件经 /oh-story API 下发（spec §4.4）
+const CREATOR_ID = 'proto-creator-001';
+
+async function track(name, data) {
+  const payload = {
+    website: WEBSITE_ID,
+    hostname: location.hostname || 'localhost',
+    language: navigator.language,
+    screen: `${screen.width}x${screen.height}`,
+    title: document.title,
+    url: location.pathname || '/workbench',
+    // spec D5：所有事件带 creator_id，保证前后端数据可按人对齐
+    data: { creator_id: CREATOR_ID, ...(data || {}) },
+  };
+  if (name) payload.name = name;
+  const res = await fetch(`${UMAMI_URL}/api/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'event', payload }),
+  });
+  const body = await res.json();
+  const log = document.getElementById('log');
+  log.innerHTML = `<span class="${res.ok ? 'ok' : 'err'}">HTTP ${res.status}</span>\n` + JSON.stringify(body, null, 2);
+}
+
+function trackPageview() { track(null); }
+function trackEvent(name, data) { track(name, data); }
+</script>
+</body>
+</html>

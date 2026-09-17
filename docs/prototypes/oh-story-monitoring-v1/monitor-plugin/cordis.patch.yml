@@ -1,0 +1,4 @@
+# PROTOTYPE bundle layer: the monitoring collection probe plugin.
+- insert:
+    - id: oh-story-monitor-prototype
+      name: 'oh-story-monitor-prototype'

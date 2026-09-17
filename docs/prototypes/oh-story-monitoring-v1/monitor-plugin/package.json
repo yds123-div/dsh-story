@@ -1,0 +1,17 @@
+{
+  "name": "oh-story-monitor-prototype",
+  "version": "0.0.2",
+  "description": "PROTOTYPE (throwaway) monitoring collection probe for oh-story monitoring v1 — see ../spec.md",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib/index.js",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "private": true
+}

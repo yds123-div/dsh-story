@@ -1,3 +1,15 @@
 node_modules/
 bundle-oh-story/release/*.tgz
 .playwright-mcp/
+.ark_key
+
+# 产品运行时数据（本地文件目录 + SQLite）
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+
+# 构建产物
+dist/
+tsconfig.tsbuildinfo

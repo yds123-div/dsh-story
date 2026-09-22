@@ -1,0 +1,829 @@
+.node-canvas-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--ant-color-bg-layout);
+  overflow: hidden;
+}
+
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 8px 14px;
+  background: var(--ant-color-bg-elevated);
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+  z-index: 20;
+  overflow: visible;
+  row-gap: 8px;
+}
+
+.back-btn {
+  font-size: 17px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  color: var(--ant-color-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.back-btn:hover {
+  color: var(--ant-color-text);
+  background: var(--ant-color-bg-elevated);
+}
+
+.canvas-title {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ant-color-text);
+}
+
+.canvas-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--ant-color-border);
+  font-size: 11px;
+  color: var(--ant-color-text-tertiary);
+  white-space: nowrap;
+  background: var(--ant-color-bg-container);
+  transition: 0.12s;
+  cursor: pointer;
+}
+
+.tool-btn:hover {
+  color: var(--ant-color-text);
+  border-color: var(--ant-color-border-secondary);
+}
+
+.tool-btn.hot {
+  color: #c5b3ff;
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(139, 92, 246, 0.14);
+}
+
+.canvas-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  padding-left: 8px;
+}
+
+.action-btn {
+  width: auto;
+  padding: 0 12px;
+  font-size: 11px;
+  border-radius: 8px;
+  border: 1px solid var(--ant-color-border);
+  color: var(--ant-color-text-secondary);
+  background: var(--ant-color-bg-container);
+  cursor: pointer;
+  transition: 0.12s;
+}
+
+.action-btn:hover {
+  color: var(--ant-color-text);
+  border-color: var(--ant-color-border-secondary);
+}
+
+.canvas-container {
+  flex: 1;
+  position: relative;
+  background-image: radial-gradient(circle, var(--ant-color-border) 1px, transparent 1px);
+  background-size: 26px 26px;
+  overflow: hidden;
+}
+
+/* 自定义节点样式 */
+.custom-node {
+  width: 208px;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+  user-select: none;
+  position: relative;
+  transition: 0.15s;
+}
+
+.custom-node:active {
+  cursor: grabbing;
+}
+
+.custom-node:hover {
+  border-color: var(--ant-color-border-secondary);
+}
+
+.custom-node.selected {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 1.5px #8b5cf6, 0 0 26px rgba(139, 92, 246, 0.35);
+}
+
+.node-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ant-color-border);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ant-color-text);
+}
+
+.node-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--ant-color-bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.node-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-thumb {
+  position: relative;
+  height: 66px;
+  margin: 9px 10px 0;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--ant-color-border);
+}
+
+.node-thumb img,
+.node-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.node-body {
+  padding: 9px 12px 6px;
+  font-size: 10.5px;
+  color: var(--ant-color-text-secondary);
+  line-height: 1.7;
+}
+
+.node-status {
+  display: inline-flex;
+  margin: 0 12px 10px;
+  font-size: 9.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(78, 207, 141, 0.13);
+  color: #4ecf8d;
+}
+
+.node-status.no {
+  background: var(--ant-color-bg-elevated);
+  color: var(--ant-color-text-tertiary);
+}
+
+.node-status.wip {
+  background: rgba(139, 92, 246, 0.14);
+  color: #a78bfa;
+}
+
+.node-actions {
+  display: flex;
+  gap: 5px;
+  padding: 4px 10px 9px;
+  opacity: 0;
+  transition: 0.15s;
+}
+
+.custom-node:hover .node-actions {
+  opacity: 1;
+}
+
+.node-actions button {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--ant-color-border);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ant-color-text-secondary);
+  cursor: pointer;
+  transition: 0.12s;
+}
+
+.node-actions button:hover {
+  border-color: var(--ant-color-primary);
+  color: #c5b8ff;
+}
+
+.node-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* React Flow Handle 样式覆盖 */
+.react-flow__handle {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--ant-color-bg-elevated);
+  border: 2.5px solid #a78bfa;
+  transition: 0.15s;
+}
+
+.react-flow__handle:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 9px rgba(139, 92, 246, 0.75);
+}
+
+.react-flow__handle.target {
+  left: -7px;
+}
+
+.react-flow__handle.source {
+  right: -7px;
+}
+
+/* 右键菜单 */
+.context-menu {
+  position: fixed;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 200;
+  min-width: 150px;
+}
+
+.context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--ant-color-text-secondary);
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: 0.12s;
+}
+
+.context-menu button:hover {
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--ant-color-text);
+}
+
+/* 预览弹窗 */
+.preview-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 10, 0.62);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+
+.preview-content {
+  width: 430px;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 18px;
+  padding: 24px 26px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--ant-color-text);
+}
+
+.preview-header button {
+  color: var(--ant-color-text-tertiary);
+  font-size: 17px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: 0.12s;
+}
+
+.preview-header button:hover {
+  color: var(--ant-color-text);
+  background: var(--ant-color-bg-elevated);
+}
+
+.preview-body {
+  border-radius: 14px;
+  overflow: hidden;
+  background: #07070d;
+  border: 1px solid var(--ant-color-border);
+}
+
+.preview-body video,
+.preview-body img {
+  width: 100%;
+  display: block;
+}
+
+/* React Flow 样式覆盖 — MiniMap 保持 RF 结构，尺寸/标题/遮罩对齐 demo */
+.react-flow__minimap.canvas-minimap {
+  width: 184px !important;
+  height: 78px !important;
+  overflow: hidden;
+  background: rgba(21, 21, 31, 0.72) !important;
+  border: 1px solid var(--ant-color-border-secondary) !important;
+  border-radius: 10px !important;
+}
+
+.react-flow__minimap.canvas-minimap::before {
+  content: 'MINIMAP';
+  position: absolute;
+  top: 3px;
+  left: 7px;
+  z-index: 2;
+  pointer-events: none;
+  font-size: 8.5px;
+  letter-spacing: 1px;
+  color: var(--ant-color-text-tertiary);
+}
+
+.react-flow__minimap.canvas-minimap svg {
+  position: relative;
+  z-index: 0;
+}
+
+.react-flow__minimap.canvas-minimap .react-flow__minimap-mask {
+  fill: rgba(12, 10, 22, 0.14) !important;
+}
+
+html[data-theme='light'] .react-flow__minimap.canvas-minimap {
+  background: rgba(255, 255, 255, 0.88) !important;
+}
+
+html[data-theme='light'] .react-flow__minimap.canvas-minimap .react-flow__minimap-mask {
+  fill: rgba(240, 236, 255, 0.22) !important;
+  stroke: #7c3aed !important;
+}
+
+/* light 主题下深色系强调色的可读性覆盖 */
+html[data-theme='light'] .tool-btn.hot,
+html[data-theme='light'] .group-item button,
+html[data-theme='light'] .model-menu .mTag,
+html[data-theme='light'] .grpLabel,
+html[data-theme='light'] .node-actions button:hover {
+  color: #7c3aed;
+}
+
+html[data-theme='light'] .model-menu .cur {
+  color: #15803d;
+}
+
+html[data-theme='light'] .canvas-tip .cur {
+  color: #0891b2;
+}
+
+html[data-theme='light'] .custom-node.selected {
+  box-shadow: 0 0 0 1.5px #8b5cf6, 0 0 18px rgba(139, 92, 246, 0.18);
+}
+
+.react-flow__controls {
+  background: var(--ant-color-bg-container) !important;
+  border: 1px solid var(--ant-color-border-secondary) !important;
+  border-radius: 10px !important;
+}
+
+.react-flow__controls-button {
+  background: var(--ant-color-bg-elevated) !important;
+  border-bottom: 1px solid var(--ant-color-border) !important;
+  color: var(--ant-color-text-secondary) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--ant-color-bg-elevated) !important;
+  color: var(--ant-color-text) !important;
+}
+
+.react-flow__edge-path {
+  stroke: #8b5cf6;
+  stroke-width: 2;
+  fill: none;
+  opacity: 0.72;
+  transition: 0.15s;
+}
+
+.react-flow__edge-path:hover {
+  stroke-width: 3.5;
+  opacity: 1;
+}
+
+.react-flow__handle {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--ant-color-bg-elevated);
+  border: 2.5px solid #a78bfa;
+}
+
+.react-flow__handle:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 9px rgba(139, 92, 246, 0.75);
+}
+
+/* 组面板 */
+.group-panel {
+  position: absolute;
+  left: 58px;
+  bottom: 18px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 230px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.group-panel-header {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ant-color-text-secondary);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ant-color-border);
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 13px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--ant-color-text-secondary);
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.group-item button {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  background: transparent;
+  color: #c5b3ff;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.group-item button:hover {
+  background: rgba(139, 92, 246, 0.14);
+}
+
+.group-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.group-members {
+  font-style: normal;
+  font-size: 9.5px;
+  color: var(--ant-color-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.model-sel-wrap {
+  position: relative;
+}
+
+.model-sel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--ant-color-border);
+  border-radius: 9px;
+  padding: 6px 11px;
+  font-size: 11.5px;
+  color: var(--ant-color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.model-sel b {
+  color: var(--ant-color-text);
+  font-weight: 600;
+}
+
+.model-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 600;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 14px;
+  padding: 8px;
+  width: 252px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.model-menu button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.model-menu button:hover {
+  background: rgba(139, 92, 246, 0.14);
+}
+
+.model-menu .mn {
+  font-size: 12.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-menu .md {
+  font-size: 10px;
+  color: var(--ant-color-text-tertiary);
+}
+
+.model-menu .cur {
+  margin-left: auto;
+  font-size: 9px;
+  color: #4ecf8d;
+}
+
+.model-menu .mTag {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.18);
+  color: #c5b3ff;
+}
+
+.canvas-zoom {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+
+.zBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border);
+  color: var(--ant-color-text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.zBtn:hover {
+  color: var(--ant-color-text);
+}
+
+.zBtn-reset {
+  font-size: 11px;
+}
+
+.canvas-tip {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 12.5px;
+  color: var(--ant-color-text-secondary);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.canvas-tip .cur {
+  color: #22d3ee;
+  font-size: 15px;
+}
+
+.canvas-tip .rb {
+  background: var(--ant-color-bg-elevated);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--ant-color-text);
+}
+
+.quick-wrap {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 5;
+}
+
+.quick-row {
+  display: flex;
+  gap: 16px;
+}
+
+.qCard {
+  width: 128px;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border);
+  border-radius: 16px;
+  padding: 18px 12px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--ant-color-text-secondary);
+}
+
+.qCard:hover {
+  border-color: #8b5cf6;
+  transform: translateY(-4px);
+  color: var(--ant-color-text);
+}
+
+.qCard .ic {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 12px;
+  border-radius: 14px;
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--ant-color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.qCard b {
+  font-size: 13px;
+  display: block;
+}
+
+.qCard i {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--ant-color-text-tertiary);
+  display: block;
+  margin-top: 5px;
+}
+
+.gen-pipeline-btn {
+  margin-top: 26px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(90deg, #8b5cf6, #6366f1);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.quick-hint {
+  margin-top: 10px;
+  font-size: 10.5px;
+  color: var(--ant-color-text-tertiary);
+}
+
+.mini-prev {
+  position: fixed;
+  z-index: 500;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 14px;
+  padding: 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  width: 256px;
+}
+
+.mini-prev .mv,
+.mini-prev .mi {
+  width: 100%;
+  border-radius: 9px;
+  display: block;
+  background: #000;
+}
+
+.mini-prev .cap {
+  font-size: 10.5px;
+  color: var(--ant-color-text-secondary);
+  margin-top: 7px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.grpBox {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1.5px dashed rgba(139, 92, 246, 0.55);
+  border-radius: 18px;
+  background: rgba(139, 92, 246, 0.05);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.grpLabel {
+  position: absolute;
+  top: -11px;
+  left: 12px;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 999px;
+  font-size: 10px;
+  color: #c5b3ff;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.edge-delete {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--ant-color-border-secondary);
+  background: var(--ant-color-bg-elevated);
+  color: var(--ant-color-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: all;
+  opacity: 0.5;
+  z-index: 8;
+}
+
+.edge-delete:hover {
+  opacity: 1;
+}

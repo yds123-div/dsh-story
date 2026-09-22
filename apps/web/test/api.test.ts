@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiClientError, api } from '../src/lib/api';
+import { ApiClientError, api } from '../src/lib/productApi';
 
 function stubFetch(handler: (url: string, init?: RequestInit) => { status: number; body: unknown }) {
   vi.stubGlobal(

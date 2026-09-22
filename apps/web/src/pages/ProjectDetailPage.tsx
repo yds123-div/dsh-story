@@ -1,7 +1,8 @@
 import type { ProjectDetail } from '@dsh-story/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ApiClientError, api } from '../lib/api';
+import { ApiClientError, api } from '../lib/productApi';
+import '../styles.css';
 import { modeLabel } from '../lib/labels';
 
 /** 项目详情：运行元数据 + 文件元数据（只读骨架，无生成业务） */

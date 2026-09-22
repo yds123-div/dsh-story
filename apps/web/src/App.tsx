@@ -1,20 +1,72 @@
-import { Route, Routes } from 'react-router-dom';
-import { EntryPage } from './pages/EntryPage';
-import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AppLayout } from './layout/AppLayout';
+import { WorkflowGate } from './components/WorkflowGate';
 
-export function App() {
+const HomePage = lazy(() => import('./pages/HomePage'));
+const IdeaPage = lazy(() => import('./pages/IdeaPage'));
+const CreativeChatPage = lazy(() => import('./pages/CreativeChatPage'));
+const CreatePage = lazy(() => import('./pages/CreatePage'));
+const OutlinePage = lazy(() => import('./pages/OutlinePage'));
+const AssetsPage = lazy(() => import('./pages/AssetsPage'));
+const EpisodesPage = lazy(() => import('./pages/EpisodesPage'));
+const StudioPage = lazy(() => import('./pages/StudioPage'));
+const CanvasPage = lazy(() => import('./pages/CanvasPage'));
+const PlazaPage = lazy(() => import('./pages/PlazaPage'));
+const SpacePage = lazy(() => import('./pages/SpacePage'));
+const NodeCanvasPage = lazy(() => import('./pages/NodeCanvasPage'));
+// 工单 01 产品骨架页（走真 API），与旧原型页并存，待逐页改造后取代对应旧页面
+const ProductEntryPage = lazy(() => import('./pages/EntryPage').then((m) => ({ default: m.EntryPage })));
+const ProductProjectDetailPage = lazy(() =>
+  import('./pages/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })),
+);
+
+export default function App() {
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>oh-story 创作平台</h1>
-        <p className="app-subtitle">短剧创作产品 · 运行骨架</p>
-      </header>
-      <main className="app-main">
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <Suspense fallback={null}>
         <Routes>
-          <Route path="/" element={<EntryPage />} />
-          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/idea" element={<IdeaPage />} />
+            <Route path="/creative/chat" element={<CreativeChatPage />} />
+            <Route path="/create" element={<CreatePage />} />
+            <Route path="/canvas" element={<CanvasPage />} />
+            <Route path="/canvas/:id" element={<NodeCanvasPage />} />
+            <Route path="/node" element={<NodeCanvasPage />} />
+            <Route path="/plaza" element={<PlazaPage />} />
+            <Route path="/space" element={<SpacePage />} />
+            <Route path="/project/:id/outline" element={<OutlinePage />} />
+            <Route
+              path="/project/:id/assets"
+              element={
+                <WorkflowGate page="assets">
+                  <AssetsPage />
+                </WorkflowGate>
+              }
+            />
+            <Route
+              path="/project/:id/episodes"
+              element={
+                <WorkflowGate page="episodes">
+                  <EpisodesPage />
+                </WorkflowGate>
+              }
+            />
+            <Route
+              path="/project/:id/episode/:episodeId"
+              element={
+                <WorkflowGate page="studio">
+                  <StudioPage />
+                </WorkflowGate>
+              }
+            />
+            <Route path="/product" element={<ProductEntryPage />} />
+            <Route path="/product/projects/:id" element={<ProductProjectDetailPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
         </Routes>
-      </main>
-    </div>
+      </Suspense>
+    </BrowserRouter>
   );
 }

@@ -2,7 +2,8 @@ import type { CreateProjectRequest, HealthResponse, ProjectSummary } from '@dsh-
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiClientError, api } from '../lib/api';
+import { ApiClientError, api } from '../lib/productApi';
+import '../styles.css';
 import { modeLabel } from '../lib/labels';
 
 /** 产品入口页：健康状态 + 创建项目 + 项目列表（骨架，不含旧页面内容） */
@@ -25,7 +26,10 @@ export function EntryPage() {
       setHealthError(err instanceof ApiClientError ? err.message : String(err));
     }
     try {
-      setProjects(await api.listProjects());
+      const list = await api.listProjects();
+      // 双轨过渡：msw 开启时 /api/projects 被旧 mock 拦截（返回旧结构），此处归一为空列表。
+      // 旧 mock handler 删除后此分支自然失效。
+      setProjects(Array.isArray(list) ? list : []);
     } catch {
       setProjects([]);
     }

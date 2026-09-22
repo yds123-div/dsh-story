@@ -44,6 +44,14 @@ export function insertFile(db: SqliteDatabase, row: FileRow): void {
   );
 }
 
+export function findFileRow(db: SqliteDatabase, id: string): FileRow | undefined {
+  return db
+    .prepare(
+      'SELECT id, project_id, run_id, kind, role, path, mime_type, size_bytes, created_at FROM files WHERE id = ?',
+    )
+    .get(id) as FileRow | undefined;
+}
+
 export function listFileRowsByProject(db: SqliteDatabase, projectId: string): FileRow[] {
   return db
     .prepare(

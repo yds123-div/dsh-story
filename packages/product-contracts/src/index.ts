@@ -70,6 +70,28 @@ export interface UpdateProjectRequest {
 }
 
 // ---------------------------------------------------------------------------
+// 原始输入约束
+// ---------------------------------------------------------------------------
+
+/**
+ * 原始输入（粘贴文本或上传文件）的首期约束，前后端共用同一来源。
+ * 首期文件上传只收 txt / md 纯文本；docx / pdf 等二进制格式的解析是后续工单的范围，
+ * 提前放行只会产生生成阶段无法读取的输入。
+ */
+export const SOURCE_INPUT_LIMITS = {
+  /** 粘贴或文件内容的字符数下限（防止误提交空内容） */
+  minChars: 10,
+  /** 剧本模式字数上限 */
+  scriptMaxChars: 300_000,
+  /** 小说模式字数上限 */
+  novelMaxChars: 100_000,
+  /** 上传文件大小上限 */
+  maxFileBytes: 10 * 1024 * 1024,
+  /** 允许上传的文件扩展名 */
+  allowedFileExtensions: ['.txt', '.md'],
+} as const;
+
+// ---------------------------------------------------------------------------
 // 运行元数据
 // ---------------------------------------------------------------------------
 
@@ -83,12 +105,16 @@ export interface RunMeta {
   projectId: string;
   kind: RunKind;
   status: RunStatus;
+  /** 本次运行消费的原始输入文件；工单 03 之前登记的旧运行可能为 null */
+  sourceFileId: string | null;
   createdAt: string;
   finishedAt: string | null;
 }
 
 export interface CreateRunRequest {
   kind: RunKind;
+  /** 运行必须明确引用本项目的一份原始输入（kind = source-input 的文件） */
+  sourceFileId: string;
 }
 
 export interface RunListResponse {
@@ -107,7 +133,7 @@ export interface FileMeta {
   projectId: string;
   runId: string | null;
   kind: FileKind;
-  /** 业务角色，如 'script-source'、'script-output' */
+  /** 业务角色：原始输入按项目模式记 'script-source' / 'novel-source'；生成产物如 'script-output' */
   role: string;
   /** 相对数据目录的 POSIX 风格路径；首期不做对象存储，后续可替换实现 */
   path: string;

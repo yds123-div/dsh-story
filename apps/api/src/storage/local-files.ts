@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 export interface SavedFile {
@@ -11,6 +11,8 @@ export interface LocalStorage {
   root: string;
   saveSourceInput(projectId: string, fileName: string, content: string): SavedFile;
   saveGenerated(projectId: string, runId: string, fileName: string, content: string): SavedFile;
+  /** 读取原始输入内容；路径越出数据目录时抛错（路径来自数据库，防纵深污染） */
+  readSourceInput(relPath: string): string;
   checkWritable(): boolean;
 }
 
@@ -41,6 +43,14 @@ export function createLocalStorage(root: string): LocalStorage {
         relPath: `generated/${projectId}/${runId}/${fileName}`,
         sizeBytes: Buffer.byteLength(content, 'utf8'),
       };
+    },
+    readSourceInput(relPath) {
+      const rootAbs = path.resolve(root);
+      const abs = path.resolve(root, relPath);
+      if (abs !== rootAbs && !abs.startsWith(rootAbs + path.sep)) {
+        throw new Error(`原始输入路径越出数据目录: ${relPath}`);
+      }
+      return readFileSync(abs, 'utf8');
     },
     checkWritable() {
       const probe = path.join(root, '.health-probe');

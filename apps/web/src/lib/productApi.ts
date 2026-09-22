@@ -1,9 +1,11 @@
 import type {
   ApiError,
   CreateProjectRequest,
+  FileMeta,
   HealthResponse,
   ProjectDetail,
   ProjectListResponse,
+  SaveSourceInputRequest,
   UpdateProjectRequest,
 } from '@dsh-story/contracts';
 
@@ -59,6 +61,19 @@ export const api = {
 
   createProject(input: CreateProjectRequest): Promise<ProjectDetail> {
     return request<ProjectDetail>('/api/product/projects', jsonInit('POST', input));
+  },
+
+  /** 向已有项目补存粘贴的原始输入（内容只读，不支持在线编辑） */
+  saveSourceInput(id: string, input: SaveSourceInputRequest): Promise<FileMeta> {
+    return request<FileMeta>(`/api/product/projects/${id}/inputs`, jsonInit('POST', input));
+  },
+
+  /** 向已有项目上传原始输入文件（txt / md 纯文本） */
+  uploadSourceInputFile(id: string, file: File): Promise<FileMeta> {
+    const form = new FormData();
+    form.append('file', file);
+    // multipart 边界由浏览器生成，不手动设置 Content-Type
+    return request<FileMeta>(`/api/product/projects/${id}/inputs/file`, { method: 'POST', body: form });
   },
 
   updateProject(id: string, input: UpdateProjectRequest): Promise<ProjectDetail> {

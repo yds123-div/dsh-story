@@ -49,4 +49,10 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
     `,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE runs ADD COLUMN source_file_id TEXT REFERENCES files(id);
+    `,
+  },
 ];

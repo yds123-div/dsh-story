@@ -39,7 +39,7 @@ export function findProjectRow(db: SqliteDatabase, id: string): ProjectRow | und
 }
 
 export function listProjectRows(db: SqliteDatabase): ProjectRow[] {
-  return db.prepare(`SELECT ${COLUMNS} FROM projects ORDER BY created_at DESC`).all() as ProjectRow[];
+  return db.prepare(`SELECT ${COLUMNS} FROM projects ORDER BY created_at DESC, rowid DESC`).all() as ProjectRow[];
 }
 
 export function updateProjectRow(

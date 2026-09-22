@@ -100,7 +100,7 @@ describe('GET /api/product/projects/:id', () => {
     const created = await ctx.app.inject({
       method: 'POST',
       url: '/api/product/projects',
-      payload: { title: '详情', mode: 'script', sourceText: 'text' },
+      payload: { title: '详情', mode: 'script', sourceText: '第一场 内景 长廊 - 夜' },
     });
     const { id } = created.json().project;
     const res = await ctx.app.inject({ method: 'GET', url: `/api/product/projects/${id}` });
@@ -216,15 +216,15 @@ describe('POST /api/product/projects/:id/inputs', () => {
     const res = await ctx.app.inject({
       method: 'POST',
       url: `/api/product/projects/${id}/inputs`,
-      payload: { filename: 'novel.txt', text: '小说正文第一章' },
+      payload: { filename: 'novel.txt', text: '小说正文第一章，开篇。' },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json();
     expect(body.projectId).toBe(id);
     expect(body.role).toBe('script-source');
-    expect(body.path).toBe(`source-input/${id}/novel.txt`);
+    expect(body.path).toMatch(new RegExp(`^source-input/${id}/[\\w-]+-novel\\.txt$`));
     const onDisk = readFileSync(path.join(ctx.dataDir, body.path), 'utf8');
-    expect(onDisk).toBe('小说正文第一章');
+    expect(onDisk).toBe('小说正文第一章，开篇。');
   });
 
   it('filename 为 .. 时收敛到随机文件名，不越出项目目录', async () => {
@@ -238,11 +238,11 @@ describe('POST /api/product/projects/:id/inputs', () => {
     const res = await ctx.app.inject({
       method: 'POST',
       url: `/api/product/projects/${id}/inputs`,
-      payload: { filename: '..', text: 'abc' },
+      payload: { filename: '..', text: '路径安全测试文本内容。' },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json();
-    expect(body.path).toMatch(new RegExp(`^source-input/${id}/input-[\\w-]+\\.txt$`));
+    expect(body.path).toMatch(new RegExp(`^source-input/${id}/[\\w-]+-input-[\\w-]+\\.txt$`));
   });
 
   it('拒绝空文本', async () => {

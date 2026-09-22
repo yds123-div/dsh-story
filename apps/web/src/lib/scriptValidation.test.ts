@@ -8,6 +8,15 @@ describe('validateScriptFile', () => {
     if (!result.ok) expect(result.message).toContain('不支持的文件格式');
   });
 
+  it('rejects binary document formats (first phase is txt / md only)', () => {
+    for (const name of ['剧本.docx', '剧本.pdf', '剧本.doc']) {
+      const file = new File(['x'], name, { type: 'application/octet-stream' });
+      const result = validateScriptFile(file);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.message).toContain('txt / md');
+    }
+  });
+
   it('rejects files larger than 10MB', () => {
     const file = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'a.txt', { type: 'text/plain' });
     const result = validateScriptFile(file);

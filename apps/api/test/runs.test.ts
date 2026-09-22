@@ -7,39 +7,43 @@ afterEach(async () => {
   ctx = undefined;
 });
 
-async function createProject(ctx: TestContext): Promise<string> {
-  const res = await ctx.app.inject({
+/** 建项目 + 存一份原始输入，返回 { projectId, sourceFileId } */
+async function setupProjectWithInput(ctx: TestContext): Promise<{ projectId: string; sourceFileId: string }> {
+  const created = await ctx.app.inject({
     method: 'POST',
     url: '/api/product/projects',
-    payload: { title: '运行元数据', mode: 'script' },
+    payload: { title: '运行元数据', mode: 'script', sourceText: '第一场 内景 长廊 - 夜' },
   });
-  return res.json().project.id as string;
+  const projectId = created.json().project.id as string;
+  const sourceFileId = created.json().files[0].id as string;
+  return { projectId, sourceFileId };
 }
 
 describe('POST /api/product/projects/:id/runs', () => {
-  it('登记一条 created 运行元数据（不执行生成业务）', async () => {
+  it('登记一条 created 运行元数据，并引用原始输入', async () => {
     ctx = await createTestApp();
-    const projectId = await createProject(ctx);
+    const { projectId, sourceFileId } = await setupProjectWithInput(ctx);
     const res = await ctx.app.inject({
       method: 'POST',
       url: `/api/product/projects/${projectId}/runs`,
-      payload: { kind: 'script' },
+      payload: { kind: 'script', sourceFileId },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json();
     expect(body.projectId).toBe(projectId);
     expect(body.kind).toBe('script');
     expect(body.status).toBe('created');
+    expect(body.sourceFileId).toBe(sourceFileId);
     expect(body.finishedAt).toBeNull();
   });
 
   it('拒绝非法 kind', async () => {
     ctx = await createTestApp();
-    const projectId = await createProject(ctx);
+    const { projectId, sourceFileId } = await setupProjectWithInput(ctx);
     const res = await ctx.app.inject({
       method: 'POST',
       url: `/api/product/projects/${projectId}/runs`,
-      payload: { kind: 'video' },
+      payload: { kind: 'video', sourceFileId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -49,7 +53,7 @@ describe('POST /api/product/projects/:id/runs', () => {
     const res = await ctx.app.inject({
       method: 'POST',
       url: '/api/product/projects/no-such-id/runs',
-      payload: { kind: 'script' },
+      payload: { kind: 'script', sourceFileId: 'any' },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -58,12 +62,17 @@ describe('POST /api/product/projects/:id/runs', () => {
 describe('GET /api/product/projects/:id/runs', () => {
   it('列出项目的运行元数据', async () => {
     ctx = await createTestApp();
-    const projectId = await createProject(ctx);
-    await ctx.app.inject({ method: 'POST', url: `/api/product/projects/${projectId}/runs`, payload: { kind: 'script' } });
+    const { projectId, sourceFileId } = await setupProjectWithInput(ctx);
+    await ctx.app.inject({
+      method: 'POST',
+      url: `/api/product/projects/${projectId}/runs`,
+      payload: { kind: 'script', sourceFileId },
+    });
     const res = await ctx.app.inject({ method: 'GET', url: `/api/product/projects/${projectId}/runs` });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.runs).toHaveLength(1);
     expect(body.runs[0].kind).toBe('script');
+    expect(body.runs[0].sourceFileId).toBe(sourceFileId);
   });
 });

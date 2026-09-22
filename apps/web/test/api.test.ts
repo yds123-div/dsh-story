@@ -82,4 +82,60 @@ describe('产品 API 客户端', () => {
     expect((err as ApiClientError).statusCode).toBe(400);
     expect((err as ApiClientError).message).toBe('title 不能为空');
   });
+
+  it('saveSourceInput() 以 JSON POST 到 /api/product/projects/:id/inputs', async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubFetch((url, init) => {
+      calls.push({ url, init });
+      return {
+        status: 201,
+        body: {
+          id: 'f1',
+          projectId: 'p1',
+          runId: null,
+          kind: 'source-input',
+          role: 'script-source',
+          path: 'source-input/p1/novel.txt',
+          mimeType: 'text/plain',
+          sizeBytes: 30,
+          createdAt: 't',
+        },
+      };
+    });
+    const meta = await api.saveSourceInput('p1', { filename: 'novel.txt', text: '第一场 内景 长廊 - 夜' });
+    expect(meta.kind).toBe('source-input');
+    expect(calls[0].url).toBe('/api/product/projects/p1/inputs');
+    expect(calls[0].init?.method).toBe('POST');
+    expect(calls[0].init?.body).toBe(JSON.stringify({ filename: 'novel.txt', text: '第一场 内景 长廊 - 夜' }));
+  });
+
+  it('uploadSourceInputFile() 以 FormData POST 到 /api/product/projects/:id/inputs/file', async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubFetch((url, init) => {
+      calls.push({ url, init });
+      return {
+        status: 201,
+        body: {
+          id: 'f2',
+          projectId: 'p1',
+          runId: null,
+          kind: 'source-input',
+          role: 'script-source',
+          path: 'source-input/p1/逆命木叶.txt',
+          mimeType: 'text/plain',
+          sizeBytes: 42,
+          createdAt: 't',
+        },
+      };
+    });
+    const file = new File(['【木叶长廊 内 夜】'], '逆命木叶.txt', { type: 'text/plain' });
+    const meta = await api.uploadSourceInputFile('p1', file);
+    expect(meta.id).toBe('f2');
+    expect(calls[0].url).toBe('/api/product/projects/p1/inputs/file');
+    expect(calls[0].init?.method).toBe('POST');
+    expect(calls[0].init?.body).toBeInstanceOf(FormData);
+    expect((calls[0].init?.body as FormData).get('file')).toBe(file);
+    // multipart 由浏览器设置边界，客户端不手动指定 Content-Type
+    expect(calls[0].init?.headers).toBeUndefined();
+  });
 });

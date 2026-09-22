@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>oh-story 首期闭环工单</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    body { margin: 0; background: #10131a; color: #edf2f7; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 72px; }
+    .eyebrow { color: #8fb8ff; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+    h1 { margin: 10px 0 12px; font-size: clamp(30px, 5vw, 52px); line-height: 1.08; }
+    .intro { max-width: 700px; color: #aab4c3; line-height: 1.7; }
+    .summary { display: flex; gap: 12px; flex-wrap: wrap; margin: 28px 0 36px; }
+    .pill { border: 1px solid #2d3a4e; background: #161c27; border-radius: 999px; padding: 8px 14px; color: #c9d6e8; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+    a { color: inherit; text-decoration: none; }
+    .card { height: 100%; box-sizing: border-box; border: 1px solid #263246; background: linear-gradient(145deg, #171e2a, #121721); border-radius: 16px; padding: 20px; transition: transform .15s ease, border-color .15s ease; }
+    .card:hover { transform: translateY(-2px); border-color: #6b9cff; }
+    .number { color: #8fb8ff; font-weight: 700; font-size: 13px; }
+    h2 { margin: 10px 0 12px; font-size: 20px; }
+    .blocked { color: #8f9caf; font-size: 13px; line-height: 1.5; }
+    .deliver { color: #c2ccda; line-height: 1.6; font-size: 14px; }
+    footer { margin-top: 42px; color: #768398; font-size: 13px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">dsh-story · local tickets</div>
+    <h1>oh-story 首期闭环工单</h1>
+    <p class="intro">以“创建项目 → 生成剧本 → 只读审阅 → 接受剧本 → 资产拆解 → 接受资产候选”为首条真实闭环。首期不包含权限、在线编辑、对象存储和复杂版本树。</p>
+    <div class="summary">
+      <span class="pill">9 个垂直切片</span>
+      <span class="pill">依赖顺序编号</span>
+      <span class="pill">ready-for-agent</span>
+      <span class="pill">单用户受信环境</span>
+    </div>
+    <section class="grid">
+      <a href="issues/01-product-runtime-foundation.md"><article class="card"><div class="number">01</div><h2>建立产品运行骨架</h2><div class="blocked">Blocked by：None</div><p class="deliver">前后端独立启动，具备共享契约、数据库、本地文件目录和健康检查。</p></article></a>
+      <a href="issues/02-script-harness-contract.md"><article class="card"><div class="number">02</div><h2>建立剧本阶段 Harness 执行契约</h2><div class="blocked">Blocked by：01</div><p class="deliver">统一请求剧本任务，并转换运行、成功、失败、超时和产物状态。</p></article></a>
+      <a href="issues/03-project-script-input.md"><article class="card"><div class="number">03</div><h2>创建项目并保存原始剧本输入</h2><div class="blocked">Blocked by：01</div><p class="deliver">创建项目，粘贴或上传原始剧本，并保存可追溯的本地输入引用。</p></article></a>
+      <a href="issues/04-script-generation-run.md"><article class="card"><div class="number">04</div><h2>运行剧本生成并保存只读产物</h2><div class="blocked">Blocked by：02、03</div><p class="deliver">发起剧本生成，观察任务状态，并保存独立的只读剧本产物包。</p></article></a>
+      <a href="issues/05-script-overview-workbench.md"><article class="card"><div class="number">05</div><h2>展示剧本创作总览工作台</h2><div class="blocked">Blocked by：04</div><p class="deliver">用总览和分阶段 Tab 审阅剧本运行结果，替代固定聊天和调试信息。</p></article></a>
+      <a href="issues/06-generation-run-selection.md"><article class="card"><div class="number">06</div><h2>管理多次运行结果并选择当前剧本</h2><div class="blocked">Blocked by：04、05</div><p class="deliver">查看历史运行，选择当前候选，保留旧结果并避免合并覆盖。</p></article></a>
+      <a href="issues/07-accept-script-open-asset-breakdown.md"><article class="card"><div class="number">07</div><h2>接受剧本并开放资产拆解</h2><div class="blocked">Blocked by：06</div><p class="deliver">接受选定剧本，使其成为当前有效剧本，并开放资产拆解入口。</p></article></a>
+      <a href="issues/08-asset-breakdown-candidates.md"><article class="card"><div class="number">08</div><h2>运行资产拆解并展示资产候选</h2><div class="blocked">Blocked by：07</div><p class="deliver">针对已接受剧本运行资产拆解，展示带来源证据的只读候选。</p></article></a>
+      <a href="issues/09-accept-assets-open-visual-setting.md"><article class="card"><div class="number">09</div><h2>接受资产候选并进入视觉设定阶段</h2><div class="blocked">Blocked by：08</div><p class="deliver">接受资产候选并进入视觉设定，但不冒充正式视觉资产。</p></article></a>
+    </section>
+    <footer>工单正文位于同目录的 <code>issues/</code> 下；该展示页只做导航和范围概览。</footer>
+  </main>
+</body>
+</html>

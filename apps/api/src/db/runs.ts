@@ -1,4 +1,4 @@
-import type { Run, RunKind, RunStatus } from '@dsh-story/contracts';
+import type { RunKind, RunMeta, RunStatus } from '@dsh-story/contracts';
 import type { SqliteDatabase } from './connection.js';
 
 export interface RunRow {
@@ -10,7 +10,7 @@ export interface RunRow {
   finished_at: string | null;
 }
 
-export function toRun(row: RunRow): Run {
+export function toRunMeta(row: RunRow): RunMeta {
   return {
     id: row.id,
     projectId: row.project_id,

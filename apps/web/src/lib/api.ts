@@ -18,6 +18,7 @@ import type {
   ProjectListResponse,
   Segment,
   SegmentListResponse,
+  StorageUsage,
   SubmitTaskResponse,
   TaskStatus,
   TemplateListResponse,
@@ -39,6 +40,11 @@ export function patchProject(id: string, body: { name: string }): Promise<Projec
 
 export function getCredits(): Promise<CreditsResponse> {
   return apiFetch('/api/credits');
+}
+
+/** 存储用量（mock 面；项目列表已切到真产品 API，用量暂不落库） */
+export function getUsage(): Promise<StorageUsage> {
+  return apiFetch('/api/usage');
 }
 
 export function submitOutlineTask(projectId: string, body: OutlineTaskBody): Promise<SubmitTaskResponse> {

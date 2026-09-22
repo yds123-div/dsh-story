@@ -5,6 +5,7 @@ import {
   finalizeOutline,
   getCredits,
   getEpisode,
+  getUsage,
   getOutline,
   getTask,
   getWorkflow,
@@ -62,6 +63,12 @@ describe('MSW project and credits contracts', () => {
     const credits = await getCredits();
     expect(credits.balance).toBe(940);
   });
+
+  it('returns mock storage usage for the homepage card', async () => {
+    const usage = await getUsage();
+    expect(usage.quotaBytes).toBe(10 * 1024 * 1024 * 1024);
+    expect(usage.usedBytes).toBeGreaterThan(0);
+  });
 });
 
 describe('outline task polling contract', () => {
@@ -110,16 +117,34 @@ describe('outline contract', () => {
     expect(outline.finalized).toBe(false);
   });
 
-  it('finalizes the outline and unlocks STEP2', async () => {
-    const workflow = await finalizeOutline('proj-nming-muye');
+  it('keeps the demo project seeded at STEP3 for the showcase', async () => {
+    // 演示种子是部署展示要的行为（seedDemoContent 直接种子到制作中），加守护防回归
+    const workflow = await getWorkflow('proj-nming-muye');
     expect(workflow).toMatchObject({
       projectId: 'proj-nming-muye',
+      unlockedStep: 3,
+      outlineFinalized: true,
+      assetsCompleted: true,
+    });
+  });
+
+  it('finalizes the outline and unlocks STEP2 on a fresh project', async () => {
+    const created = await createProject({ name: '闸门验证' });
+    const { taskId } = await submitOutlineTask(created.id, {
+      sourceType: 'paste',
+      text: '林晚扶着廊柱，指尖颤抖。',
+    });
+    await waitSucceeded(taskId);
+
+    const workflow = await finalizeOutline(created.id);
+    expect(workflow).toMatchObject({
+      projectId: created.id,
       unlockedStep: 2,
       outlineFinalized: true,
     });
-    const outline = await getOutline('proj-nming-muye');
+    const outline = await getOutline(created.id);
     expect(outline.finalized).toBe(true);
-    const again = await getWorkflow('proj-nming-muye');
+    const again = await getWorkflow(created.id);
     expect(again.unlockedStep).toBe(2);
   });
 });
@@ -163,18 +188,26 @@ describe('assets contract', () => {
 
 describe('episodes and workflow chain', () => {
   it('unlocks STEP3 then splits into 1 episode with 3 segments / 37s', async () => {
-    await finalizeOutline('proj-nming-muye');
-    const afterAssets = await completeAssets('proj-nming-muye');
+    // 用新项目走完整链路：演示项目（proj-nming-muye）种子时已处于 STEP3 且分集已拆
+    const created = await createProject({ name: '分集验证' });
+    const outlineTask = await submitOutlineTask(created.id, {
+      sourceType: 'paste',
+      text: '林晚扶着廊柱，指尖颤抖。',
+    });
+    await waitSucceeded(outlineTask.taskId);
+    await finalizeOutline(created.id);
+
+    const afterAssets = await completeAssets(created.id);
     expect(afterAssets.unlockedStep).toBe(3);
 
-    const before = await listEpisodes('proj-nming-muye');
+    const before = await listEpisodes(created.id);
     expect(before.episodes).toEqual([]);
 
-    const { taskId } = await submitEpisodeSplitTask('proj-nming-muye');
+    const { taskId } = await submitEpisodeSplitTask(created.id);
     const status = await waitSucceeded(taskId);
     expect(status.status).toBe('succeeded');
 
-    const { episodes } = await listEpisodes('proj-nming-muye');
+    const { episodes } = await listEpisodes(created.id);
     const ep1 = episodes.find((e) => e.number === 1);
     expect(ep1).toMatchObject({
       title: '异世囚笼',
@@ -182,7 +215,7 @@ describe('episodes and workflow chain', () => {
       durationSec: 37,
       status: 'split',
     });
-    expect(ep1?.id).toBe('proj-nming-muye-ep-1');
+    expect(ep1?.id).toBe(`${created.id}-ep-1`);
   });
 });
 

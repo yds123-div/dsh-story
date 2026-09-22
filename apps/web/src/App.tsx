@@ -15,11 +15,6 @@ const CanvasPage = lazy(() => import('./pages/CanvasPage'));
 const PlazaPage = lazy(() => import('./pages/PlazaPage'));
 const SpacePage = lazy(() => import('./pages/SpacePage'));
 const NodeCanvasPage = lazy(() => import('./pages/NodeCanvasPage'));
-// 工单 01 产品骨架页（走真 API），与旧原型页并存，待逐页改造后取代对应旧页面
-const ProductEntryPage = lazy(() => import('./pages/EntryPage').then((m) => ({ default: m.EntryPage })));
-const ProductProjectDetailPage = lazy(() =>
-  import('./pages/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })),
-);
 
 export default function App() {
   return (
@@ -61,8 +56,7 @@ export default function App() {
                 </WorkflowGate>
               }
             />
-            <Route path="/product" element={<ProductEntryPage />} />
-            <Route path="/product/projects/:id" element={<ProductProjectDetailPage />} />
+            <Route path="/product" element={<Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

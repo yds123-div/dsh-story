@@ -1,6 +1,6 @@
 /**
  * 数据库迁移：按 version 顺序执行，已在 schema_migrations 中登记的跳过。
- * 每次迁移在事务内执行 DDL + 登记版本。
+ * 迁移一旦发布不可修改，只能追加新版本。
  */
 export interface Migration {
   version: number;
@@ -41,6 +41,12 @@ export const MIGRATIONS: Migration[] = [
         created_at TEXT NOT NULL
       );
       CREATE INDEX idx_files_project ON files(project_id);
+    `,
+  },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
     `,
   },
 ];

@@ -1,32 +1,38 @@
 import { useEffect, useState } from 'react';
 import { App, Button, Card, Flex, Input, Modal, Progress, Select, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { createProject, listProjects, listTemplates, patchProject } from '../lib/api';
-import type { Project, StorageUsage, Template } from '../types/api';
+import type { ProjectMode, ProjectSummary } from '@dsh-story/contracts';
+import { api } from '../lib/productApi';
+import { getUsage, listTemplates } from '../lib/api';
+import type { StorageUsage, Template } from '../types/api';
 
 function formatUpdated(iso: string): string {
   return `更新于 ${iso.slice(0, 16).replace('T', ' ')}`;
-}
-
-function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 function formatGb(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+const STATUS_TEXT: Record<ProjectSummary['status'], string> = {
+  active: '进行中',
+  archived: '已归档',
+};
+
+const MODE_TEXT: Record<ProjectMode, string> = {
+  script: '剧本模式',
+  novel: '小说模式',
+};
+
 export default function HomePage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
-  const [projects, setProjects] = useState<Project[]>([]);
+  // 项目列表走真产品 API（apps/api + SQLite）；存储用量与模板仍是旧 mock 面
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
-  const [aspectRatio, setAspectRatio] = useState('9:16');
-  const [style, setStyle] = useState('赛博朋克电影');
+  const [mode, setMode] = useState<ProjectMode>('script');
   const [templateId, setTemplateId] = useState('');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [creating, setCreating] = useState(false);
@@ -35,9 +41,10 @@ export default function HomePage() {
   const [renaming, setRenaming] = useState(false);
 
   const load = async () => {
-    const data = await listProjects();
+    const data = await api.listProjects();
     setProjects(data.projects);
-    setStorage(data.storage);
+    const usage = await getUsage();
+    setStorage(usage);
   };
 
   useEffect(() => {
@@ -48,14 +55,14 @@ export default function HomePage() {
   }, [message]);
 
   const onCreate = async () => {
-    const name = newName.trim();
-    if (!name) {
+    const title = newName.trim();
+    if (!title) {
       message.warning('请输入项目名称');
       return;
     }
     setCreating(true);
     try {
-      await createProject({ name, aspectRatio, style, templateId: templateId || undefined });
+      await api.createProject({ title, mode });
       setCreateOpen(false);
       setNewName('');
       setTemplateId('');
@@ -69,20 +76,30 @@ export default function HomePage() {
 
   const onRename = async () => {
     if (!renameId) return;
-    const name = renameValue.trim();
-    if (!name) {
+    const title = renameValue.trim();
+    if (!title) {
       message.warning('请输入项目名称');
       return;
     }
     setRenaming(true);
     try {
-      await patchProject(renameId, { name });
+      await api.updateProject(renameId, { title });
       setRenameId(null);
       await load();
     } catch {
       message.error('重命名失败');
     } finally {
       setRenaming(false);
+    }
+  };
+
+  const onArchive = async (project: ProjectSummary) => {
+    const next = project.status === 'active' ? 'archived' : 'active';
+    try {
+      await api.updateProject(project.id, { status: next });
+      await load();
+    } catch {
+      message.error(next === 'archived' ? '归档失败' : '恢复失败');
     }
   };
 
@@ -94,7 +111,7 @@ export default function HomePage() {
         空间 <em>· 个人</em>
       </h2>
       <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 6 }}>
-        个人项目卡 · 重命名 / 归档 · 项目积分余额 · 成片下载 · 存储用量
+        个人项目卡 · 重命名 / 归档 · 存储用量
       </Typography.Text>
 
       <Card style={{ marginTop: 20 }} styles={{ body: { padding: '13px 24px' } }}>
@@ -142,7 +159,7 @@ export default function HomePage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 15 }}>
         {projects.map((p) => {
-          const ok = p.status === 'in_progress';
+          const ok = p.status === 'active';
           return (
             <Card
               key={p.id}
@@ -152,64 +169,55 @@ export default function HomePage() {
               onClick={() => navigate(`/create?projectId=${p.id}`)}
               cover={
                 <div className="ds-cv">
-                  {p.coverUrl ? (
-                    <img src={p.coverUrl} alt={p.name} />
-                  ) : (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 800,
-                        color: 'rgba(255,255,255,.85)',
-                      }}
-                    >
-                      {p.name}
-                    </div>
-                  )}
-                  {p.coverUrl ? <span className="ds-aigc">✦ AI生成</span> : null}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 800,
+                      color: 'rgba(255,255,255,.85)',
+                    }}
+                  >
+                    {p.title}
+                  </div>
                   <div className="ds-ops">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setRenameId(p.id);
-                        setRenameValue(p.name);
+                        setRenameValue(p.title);
                       }}
                     >
                       ✎ 重命名
                     </button>
-                    <button type="button" onClick={(e) => e.stopPropagation()}>
-                      📦 归档
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void onArchive(p);
+                      }}
+                    >
+                      {ok ? '📦 归档' : '📦 恢复'}
                     </button>
                   </div>
                 </div>
               }
             >
-              <b style={{ fontSize: 13.5 }}>{p.name}</b>
+              <b style={{ fontSize: 13.5 }}>{p.title}</b>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 7 }}>
                 <Flex align="center" justify="space-between">
                   <span style={{ fontSize: 10.5, color: 'var(--ant-color-text-tertiary)' }}>{formatUpdated(p.updatedAt)}</span>
                   <span className={`ds-status ${ok ? 'ok' : 'no'}`}>
                     {ok ? <i className="ds-dot" /> : null}
-                    {p.statusText}
+                    {STATUS_TEXT[p.status]}
                   </span>
                 </Flex>
                 <Flex align="center" justify="space-between">
-                  <span style={{ fontSize: 10.5, color: 'var(--ant-color-text-tertiary)' }}>
-                    资产 {p.assetCount}（角色{p.characterCount}+场景{p.sceneCount}）
-                  </span>
-                  <span style={{ fontSize: 10.5, color: 'var(--ant-color-text-tertiary)' }}>
-                    片段 {p.segmentCount} · {formatDuration(p.durationSec)}
-                  </span>
-                </Flex>
-                <Flex align="center" justify="space-between">
-                  <span style={{ fontSize: 10.5, color: 'var(--ant-color-text-tertiary)' }}>项目积分余额 ◆{p.creditBalance}</span>
-                  <span style={{ fontSize: 10.5, color: 'var(--ant-color-text-tertiary)' }}>
-                    {p.aspectRatio} · {p.style}
-                  </span>
+                  <span style={{ fontSize: 10.5, color: 'var(--ant-color-text-tertiary)' }}>{MODE_TEXT[p.mode]}</span>
+                  <span style={{ fontSize: 10.5, color: 'var(--ant-color-text-tertiary)' }}>创建于 {p.createdAt.slice(0, 10)}</span>
                 </Flex>
               </div>
             </Card>
@@ -247,7 +255,21 @@ export default function HomePage() {
           </div>
           <div>
             <Typography.Text type="secondary" style={{ fontSize: 11.5, display: 'block', marginBottom: 6 }}>
-              可选模板
+              创作模式
+            </Typography.Text>
+            <Select
+              style={{ width: '100%' }}
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: 'script', label: '剧本模式 · 处理已有剧本' },
+                { value: 'novel', label: '小说模式 · 完整改编链路' },
+              ]}
+            />
+          </div>
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 11.5, display: 'block', marginBottom: 6 }}>
+              可选模板（仅用于预填名称）
             </Typography.Text>
             <Select
               style={{ width: '100%' }}
@@ -255,35 +277,13 @@ export default function HomePage() {
               onChange={(value) => {
                 setTemplateId(value);
                 const tpl = templates.find((item) => item.id === value);
-                if (!tpl) return;
-                if (!newName.trim()) setNewName(tpl.name);
-                setStyle(tpl.style);
-                setAspectRatio(tpl.aspectRatio);
+                if (tpl && !newName.trim()) setNewName(tpl.name);
               }}
               options={[
                 { value: '', label: '— 不使用模板 —' },
                 ...templates.map((tpl) => ({ value: tpl.id, label: tpl.name })),
               ]}
             />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11 }}>
-            <div>
-              <Typography.Text type="secondary" style={{ fontSize: 11.5, display: 'block', marginBottom: 6 }}>
-                默认比例
-              </Typography.Text>
-              <Select style={{ width: '100%' }} value={aspectRatio} onChange={setAspectRatio} options={[{ value: '9:16' }, { value: '16:9' }]} />
-            </div>
-            <div>
-              <Typography.Text type="secondary" style={{ fontSize: 11.5, display: 'block', marginBottom: 6 }}>
-                默认风格
-              </Typography.Text>
-              <Select
-                style={{ width: '100%' }}
-                value={style}
-                onChange={setStyle}
-                options={[{ value: '赛博朋克电影' }, { value: '国漫写实' }]}
-              />
-            </div>
           </div>
         </Flex>
       </Modal>

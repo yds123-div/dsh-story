@@ -55,4 +55,12 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE runs ADD COLUMN source_file_id TEXT REFERENCES files(id);
     `,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE runs ADD COLUMN started_at TEXT;
+      ALTER TABLE runs ADD COLUMN current_step TEXT;
+      ALTER TABLE runs ADD COLUMN failure_reason TEXT;
+    `,
+  },
 ];

@@ -16,7 +16,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import type { AppDeps } from '../app.js';
 import type { SqliteDatabase } from '../db/connection.js';
-import { findFileRow, insertFile, listFileRowsByProject, toFileMeta } from '../db/files.js';
+import { findFileRow, insertFile, listFileRowsByProject, toFileMeta, type FileRow } from '../db/files.js';
 import {
   findProjectRow,
   insertProject,
@@ -26,6 +26,11 @@ import {
   type ProjectRow,
 } from '../db/projects.js';
 import { insertRun, listRunRowsByProject, toRunMeta, type RunRow } from '../db/runs.js';
+import path from 'node:path';
+import { HarnessFactory } from '../harness/index.js';
+import { loadConfig } from '../config.js';
+
+const config = loadConfig();
 
 // satisfies 绑定契约联合类型：契约加值时这里会在编译期报错，而不是运行时 400
 const PROJECT_MODES = ['script', 'novel'] as const satisfies readonly ProjectMode[];
@@ -174,7 +179,10 @@ export function registerProjectRoutes(app: FastifyInstance, deps: AppDeps): void
       status: 'created',
       source_file_id: sourceFileRow,
       created_at: new Date().toISOString(),
+      started_at: null,
       finished_at: null,
+      current_step: null,
+      failure_reason: null,
     };
     insertRun(deps.db, row);
     return reply.code(201).send(toRunMeta(row));
@@ -186,6 +194,170 @@ export function registerProjectRoutes(app: FastifyInstance, deps: AppDeps): void
     const runs: RunMeta[] = listRunRowsByProject(deps.db, projectId).map(toRunMeta);
     return { runs };
   });
+
+  // 执行剧本阶段任务
+  app.post('/api/product/runs/:id/execute', async (request, reply) => {
+    const { id: runId } = request.params as { id: string };
+    const runRow = deps.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as RunRow | undefined;
+    if (!runRow) return notFound(reply);
+
+    // 检查运行状态是否为 created
+    if (runRow.status !== 'created') {
+      return reply.code(400).send(badRequest('运行状态必须为 created 才能执行'));
+    }
+
+    // 获取原始输入文件
+    const sourceFile = deps.db.prepare('SELECT * FROM files WHERE id = ?').get(runRow.source_file_id) as FileRow | undefined;
+    if (!sourceFile) {
+      return reply.code(404).send(badRequest('未找到原始输入文件'));
+    }
+
+    // 读取原始输入内容
+    const fs = await import('node:fs/promises');
+    const sourceText = await fs.readFile(path.join(deps.storage.root, sourceFile.path), 'utf8');
+
+    // 创建 Harness 适配器
+    const harness = HarnessFactory.createScriptStageHarness(config);
+
+    // 更新状态为 running
+    deps.db.prepare('UPDATE runs SET status = ?, started_at = ?, current_step = ? WHERE id = ?').run(
+      'running',
+      new Date().toISOString(),
+      'initializing',
+      runId
+    );
+
+    try {
+      // 执行任务
+      const result = await harness.execute(
+        runId,
+        sourceText,
+        async (update: any) => {
+          // 更新运行状态
+          const updates: Record<string, any> = {};
+          if (update.status) updates.status = update.status;
+          if (update.currentStep !== undefined) updates.current_step = update.currentStep;
+          if (update.startedAt !== undefined) updates.started_at = update.startedAt;
+          if (update.finishedAt !== undefined) updates.finished_at = update.finishedAt;
+          if (update.failureReason !== undefined) updates.failure_reason = update.failureReason;
+
+          if (Object.keys(updates).length > 0) {
+            const setClause = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+            const values = [...Object.values(updates), runId];
+            deps.db.prepare(`UPDATE runs SET ${setClause} WHERE id = ?`).run(...values);
+          }
+        }
+      );
+
+      // 保存生成的产物
+      for (const artifactPath of result.artifacts) {
+        const artifactFullPath = path.join(deps.storage.root, 'generated', runRow.project_id, runId, artifactPath);
+        const artifactContent = await fs.readFile(artifactFullPath, 'utf8');
+        const fileMeta: FileMeta = {
+          id: randomUUID(),
+          projectId: runRow.project_id,
+          runId: runId,
+          kind: 'generated',
+          role: getArtifactRole(artifactPath),
+          path: `generated/${runRow.project_id}/${runId}/${artifactPath}`,
+          mimeType: getArtifactMimeType(artifactPath),
+          sizeBytes: Buffer.byteLength(artifactContent, 'utf8'),
+          createdAt: new Date().toISOString(),
+        };
+        insertFile(deps.db, {
+          id: fileMeta.id,
+          project_id: fileMeta.projectId,
+          run_id: fileMeta.runId,
+          kind: fileMeta.kind,
+          role: fileMeta.role,
+          path: fileMeta.path,
+          mime_type: fileMeta.mimeType,
+          size_bytes: fileMeta.sizeBytes,
+          created_at: fileMeta.createdAt,
+        });
+      }
+
+      return reply.code(200).send({
+        run: toRunMeta(deps.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as RunRow),
+        artifacts: result.artifacts,
+      });
+    } catch (error) {
+      return reply.code(500).send(badRequest(`执行失败: ${error instanceof Error ? error.message : String(error)}`));
+    }
+  });
+
+  // 获取运行详情
+  app.get('/api/product/runs/:id', async (request, reply) => {
+    const { id: runId } = request.params as { id: string };
+    const runRow = deps.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as RunRow | undefined;
+    if (!runRow) return notFound(reply);
+
+    const files = listFileRowsByProject(deps.db, runRow.project_id)
+      .filter(file => file.run_id === runId)
+      .map(toFileMeta);
+
+    return {
+      run: toRunMeta(runRow),
+      files,
+    };
+  });
+
+  // 取消运行
+  app.post('/api/product/runs/:id/cancel', async (request, reply) => {
+    const { id: runId } = request.params as { id: string };
+    const runRow = deps.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as RunRow | undefined;
+    if (!runRow) return notFound(reply);
+
+    if (runRow.status !== 'running') {
+      return reply.code(400).send(badRequest('只有 running 状态的运行才能取消'));
+    }
+
+    try {
+      const harness = HarnessFactory.createScriptStageHarness(config);
+      await harness.cancel(runId);
+
+      deps.db.prepare('UPDATE runs SET status = ?, finished_at = ?, failure_reason = ? WHERE id = ?').run(
+        'failed',
+        new Date().toISOString(),
+        '用户取消',
+        runId
+      );
+
+      return reply.code(200).send(toRunMeta(deps.db.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as RunRow));
+    } catch (error) {
+      return reply.code(500).send(badRequest(`取消失败: ${error instanceof Error ? error.message : String(error)}`));
+    }
+  });
+}
+
+// 辅助函数：根据文件路径获取角色
+function getArtifactRole(filePath: string): string {
+  const filename = path.basename(filePath).toLowerCase();
+  if (filename.includes('剧本') || filename.includes('script')) {
+    return 'script-body';
+  }
+  if (filename.includes('分析') || filename.includes('analysis')) {
+    return 'script-analysis';
+  }
+  if (filename.includes('场景') || filename.includes('scene')) {
+    return 'scene-index';
+  }
+  if (filename.includes('资产') || filename.includes('asset')) {
+    return 'asset-candidate';
+  }
+  if (filename.includes('制作') || filename.includes('production')) {
+    return 'production-check';
+  }
+  return 'generated';
+}
+
+// 辅助函数：根据文件路径获取 MIME 类型
+function getArtifactMimeType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.md' || ext === '.txt') {
+    return 'text/markdown';
+  }
+  return 'application/octet-stream';
 }
 
 function saveSourceInput(
@@ -251,7 +423,7 @@ function getProjectDetail(db: SqliteDatabase, id: string): ProjectDetail | undef
 /** 兜底命名与非法名（点号、路径片段、Windows 保留字符）都收敛到随机文件名，避免写到项目目录之外 */
 function sanitizeFilename(name: string): string {
   const fallback = `input-${randomUUID()}.txt`;
-  const cleaned = name.trim().replace(/[\\/]/g, '');
+  const cleaned = name.trim().replace(/[\/]/g, '');
   if (!cleaned || /^\.+$/.test(cleaned) || /[<>:"|?*\x00-\x1f]/.test(cleaned)) return fallback;
   return cleaned;
 }

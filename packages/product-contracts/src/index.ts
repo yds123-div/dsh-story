@@ -98,7 +98,7 @@ export const SOURCE_INPUT_LIMITS = {
 export type RunKind = 'script' | 'asset-extraction';
 
 /** 工单 01 只登记运行元数据，不执行生成业务；真实运行是工单 04 的范围 */
-export type RunStatus = 'created' | 'running' | 'succeeded' | 'failed' | 'rejected';
+export type RunStatus = 'created' | 'running' | 'succeeded' | 'failed' | 'timeout' | 'rejected';
 
 export interface RunMeta {
   id: string;
@@ -108,13 +108,21 @@ export interface RunMeta {
   /** 本次运行消费的原始输入文件；工单 03 之前登记的旧运行可能为 null */
   sourceFileId: string | null;
   createdAt: string;
+  /** Harness 接受任务的时间；created 状态为 null */
+  startedAt: string | null;
   finishedAt: string | null;
+  /** 最近上报的执行步骤（工具名或步骤序号）；执行前为 null */
+  currentStep: string | null;
+  /** failed/timeout 状态下的失败或超时原因 */
+  failureReason: string | null;
 }
 
 export interface CreateRunRequest {
   kind: RunKind;
   /** 运行必须明确引用本项目的一份原始输入（kind = source-input 的文件） */
   sourceFileId: string;
+  /** 幂等键：同一项目内相同键的重复请求返回已存在的运行，不重复创建 */
+  idempotencyKey?: string;
 }
 
 export interface RunListResponse {

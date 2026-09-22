@@ -76,12 +76,6 @@ export const handlers = [
     return HttpResponse.json({ balance: getCreditsBalance() });
   }),
 
-  // 存储用量：项目列表已切真产品 API（/api/product/*），首页存储卡片的数据源
-  http.get('/api/usage', async () => {
-    await netDelay(60);
-    return HttpResponse.json(getStorage());
-  }),
-
   http.post('/api/projects/:id/outline-tasks', async ({ params, request }) => {
     await netDelay(120);
     const project = getProject(String(params.id));

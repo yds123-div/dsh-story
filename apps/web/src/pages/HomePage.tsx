@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react';
-import { App, Button, Card, Flex, Input, Modal, Progress, Select, Typography } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { App, Button, Card, Flex, Input, Modal, Select, Typography } from 'antd';
 import type { ProjectMode, ProjectSummary } from '@dsh-story/contracts';
 import { api } from '../lib/productApi';
-import { getUsage, listTemplates } from '../lib/api';
-import type { StorageUsage, Template } from '../types/api';
+import { listTemplates } from '../lib/api';
+import type { Template } from '../types/api';
 
 function formatUpdated(iso: string): string {
   return `更新于 ${iso.slice(0, 16).replace('T', ' ')}`;
-}
-
-function formatGb(bytes: number): string {
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 const STATUS_TEXT: Record<ProjectSummary['status'], string> = {
@@ -26,10 +21,8 @@ const MODE_TEXT: Record<ProjectMode, string> = {
 
 export default function HomePage() {
   const { message } = App.useApp();
-  const navigate = useNavigate();
-  // 项目列表走真产品 API（apps/api + SQLite）；存储用量与模板仍是旧 mock 面
+  // 项目列表走真产品 API（apps/api + SQLite）；模板选择仍是旧 mock 面
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [storage, setStorage] = useState<StorageUsage | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [mode, setMode] = useState<ProjectMode>('script');
@@ -43,8 +36,6 @@ export default function HomePage() {
   const load = async () => {
     const data = await api.listProjects();
     setProjects(data.projects);
-    const usage = await getUsage();
-    setStorage(usage);
   };
 
   useEffect(() => {
@@ -103,52 +94,14 @@ export default function HomePage() {
     }
   };
 
-  const usedPct = storage ? Math.round((storage.usedBytes / storage.quotaBytes) * 100) : 0;
-
   return (
     <div style={{ padding: '30px 32px 70px', maxWidth: 1200, width: '100%', margin: '0 auto' }}>
       <h2 className="ds-h2">
         空间 <em>· 个人</em>
       </h2>
       <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 6 }}>
-        个人项目卡 · 重命名 / 归档 · 存储用量
+        个人项目卡 · 重命名 / 归档
       </Typography.Text>
-
-      <Card style={{ marginTop: 20 }} styles={{ body: { padding: '13px 24px' } }}>
-        <Flex align="center" gap={18}>
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 14,
-              background: 'linear-gradient(135deg,#8b5cf6,#6366f1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 24,
-            }}
-          >
-            🧊
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Flex align="center" gap={10}>
-              <b style={{ fontSize: 15 }}>个人空间</b>
-              <span className="ds-status no" style={{ padding: '2px 7px', fontSize: 9.5, background: 'rgba(139,92,246,.14)', color: '#a78bfa' }}>
-                免费版
-              </span>
-            </Flex>
-            <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block', margin: '5px 0 8px' }}>
-              存储用量 <b style={{ color: 'var(--ant-color-text)' }}>{storage ? formatGb(storage.usedBytes) : '—'}</b>
-              {' / '}
-              {storage ? formatGb(storage.quotaBytes) : '—'} · 成片保留 {storage?.retentionDays ?? 30} 天 · 合成完成后可在此下载
-            </Typography.Text>
-            <Progress percent={usedPct} showInfo={false} size={['100%', 8]} strokeColor={{ from: '#8b5cf6', to: '#6366f1' }} />
-          </div>
-          <Button className="ds-ghost ds-pill" size="small">
-            👥 切换团队空间
-          </Button>
-        </Flex>
-      </Card>
 
       <Flex align="center" justify="space-between" style={{ margin: '26px 0 13px' }}>
         <h3 style={{ fontSize: 15, margin: 0 }}>📁 我的项目</h3>
@@ -160,13 +113,13 @@ export default function HomePage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 15 }}>
         {projects.map((p) => {
           const ok = p.status === 'active';
+          // 真项目尚无可用下游页（CreatePage 仍是 mock，工单 03/04 接管），暂时禁用点击
           return (
             <Card
               key={p.id}
               className="ds-card"
-              style={{ overflow: 'hidden', cursor: 'pointer' }}
+              style={{ overflow: 'hidden' }}
               styles={{ body: { padding: '12px 14px' } }}
-              onClick={() => navigate(`/create?projectId=${p.id}`)}
               cover={
                 <div className="ds-cv">
                   <div

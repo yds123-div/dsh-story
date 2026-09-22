@@ -5,7 +5,6 @@ import {
   finalizeOutline,
   getCredits,
   getEpisode,
-  getUsage,
   getOutline,
   getTask,
   getWorkflow,
@@ -62,12 +61,6 @@ describe('MSW project and credits contracts', () => {
   it('returns credit balance 940', async () => {
     const credits = await getCredits();
     expect(credits.balance).toBe(940);
-  });
-
-  it('returns mock storage usage for the homepage card', async () => {
-    const usage = await getUsage();
-    expect(usage.quotaBytes).toBe(10 * 1024 * 1024 * 1024);
-    expect(usage.usedBytes).toBeGreaterThan(0);
   });
 });
 
